@@ -1,0 +1,16 @@
+{
+  "name": "ふたりの予定帳",
+  "short_name": "ふたりの予定帳",
+  "description": "ふたりで予定と行きたい所を共有するアプリ",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fff8f9",
+  "theme_color": "#f06a8a",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

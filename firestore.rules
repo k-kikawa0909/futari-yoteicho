@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ペアコード(長くてランダムな文字列)を知っている人だけが、そのペアのデータを読み書きできる
+    match /rooms/{roomId}/{document=**} {
+      allow read, write: if request.auth != null && roomId.size() >= 20;
+    }
+  }
+}

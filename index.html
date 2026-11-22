@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ふたりの予定帳</title>
+<meta name="theme-color" content="#f06a8a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ふたりの予定帳">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <h1 id="title">ふたりの予定帳</h1>
+    <span id="mode" class="mode"></span>
+  </header>
+
+  <!-- はじめての設定 -->
+  <section id="setup" class="view" hidden>
+    <div class="card">
+      <h2>はじめに</h2>
+      <p class="muted">二人で同じ「ペアコード」を使うと、予定とリストが共有されます。</p>
+      <label>あなたの名前<input id="setupName" maxlength="12" placeholder="例: けんた"></label>
+      <div class="split">
+        <button id="btnNewPair" class="primary">新しく始める</button>
+      </div>
+      <hr>
+      <p class="muted">相手からペアコードをもらった人はこちら</p>
+      <label>ペアコード<input id="setupCode" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="相手から届いたコードを貼り付け"></label>
+      <button id="btnJoin">コードで参加する</button>
+      <p id="setupMsg" class="error"></p>
+    </div>
+  </section>
+
+  <!-- カレンダー -->
+  <section id="calendar" class="view" hidden>
+    <div class="cal-head">
+      <button id="prevMonth" class="icon" aria-label="前の月">‹</button>
+      <h2 id="monthLabel"></h2>
+      <button id="nextMonth" class="icon" aria-label="次の月">›</button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="weekdays"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>
+    <div id="grid" class="grid"></div>
+    <div class="day-panel">
+      <div class="day-panel-head">
+        <h3 id="dayLabel"></h3>
+        <button id="btnAddEvent" class="primary small">＋ 予定</button>
+      </div>
+      <ul id="dayEvents" class="list"></ul>
+    </div>
+  </section>
+
+  <!-- 行きたい所 -->
+  <section id="places" class="view" hidden>
+    <div class="seg">
+      <button data-filter="todo" class="on">行きたい</button>
+      <button data-filter="done">行った</button>
+      <button data-filter="all">ぜんぶ</button>
+    </div>
+    <ul id="placeList" class="list"></ul>
+    <button id="btnAddPlace" class="fab" aria-label="行きたい所を追加">＋</button>
+  </section>
+
+  <!-- 設定 -->
+  <section id="settings" class="view" hidden>
+    <div class="card">
+      <h2>ふたりの名前</h2>
+      <label><span class="dot a"></span>ひとり目<input id="nameA" maxlength="12"></label>
+      <label><span class="dot b"></span>ふたり目<input id="nameB" maxlength="12"></label>
+      <label>この端末を使っているのは
+        <select id="whoAmI"><option value="a">ひとり目</option><option value="b">ふたり目</option></select>
+      </label>
+      <button id="btnSaveNames" class="primary">保存</button>
+    </div>
+    <div class="card">
+      <h2>ペアコード</h2>
+      <p class="muted">相手の端末でこのコードを入れると、同じ予定帳を見られます。他の人には教えないでください。</p>
+      <div class="code-box"><code id="pairCode"></code><button id="btnCopyCode" class="small">コピー</button></div>
+      <p id="copyMsg" class="muted"></p>
+    </div>
+    <div class="card">
+      <h2>ホーム画面に追加するには</h2>
+      <p class="muted"><b>iPhone</b>: Safari で開き、下の共有ボタン(□↑)→「ホーム画面に追加」</p>
+      <p class="muted"><b>Android</b>: Chrome で開き、右上の︙ →「ホーム画面に追加」または「アプリをインストール」</p>
+    </div>
+    <div class="card">
+      <button id="btnLeave" class="danger">この端末のペア設定をやめる</button>
+      <p class="muted">予定やリストは消えません。もう一度コードを入れれば戻れます。</p>
+    </div>
+  </section>
+
+  <nav class="tabs" id="tabs" hidden>
+    <button data-view="calendar" class="on"><span>📅</span>カレンダー</button>
+    <button data-view="places"><span>📍</span>行きたい所</button>
+    <button data-view="settings"><span>⚙️</span>設定</button>
+  </nav>
+</div>
+
+<!-- 予定の入力 -->
+<dialog id="eventDialog">
+  <form method="dialog" id="eventForm">
+    <h2 id="eventDialogTitle">予定を追加</h2>
+    <label>タイトル<input name="title" required maxlength="40" placeholder="例: 映画を見に行く"></label>
+    <div class="row2">
+      <label>日付<input name="date" type="date" required></label>
+      <label>時間<input name="time" type="time"></label>
+    </div>
+    <fieldset class="who">
+      <legend>だれの予定?</legend>
+      <label><input type="radio" name="who" value="both" checked><span class="dot both"></span><span class="wname" data-w="both">ふたり</span></label>
+      <label><input type="radio" name="who" value="a"><span class="dot a"></span><span class="wname" data-w="a"></span></label>
+      <label><input type="radio" name="who" value="b"><span class="dot b"></span><span class="wname" data-w="b"></span></label>
+    </fieldset>
+    <label>メモ<textarea name="memo" rows="2" maxlength="200"></textarea></label>
+    <input type="hidden" name="id">
+    <input type="hidden" name="placeId">
+    <div class="actions">
+      <button type="button" id="btnDeleteEvent" class="danger" hidden>削除</button>
+      <span class="grow"></span>
+      <button type="button" value="cancel" class="ghost" data-close>やめる</button>
+      <button type="submit" class="primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 行きたい所の入力 -->
+<dialog id="placeDialog">
+  <form method="dialog" id="placeForm">
+    <h2 id="placeDialogTitle">行きたい所を追加</h2>
+    <label>名前<input name="title" required maxlength="40" placeholder="例: 〇〇水族館"></label>
+    <label>場所・エリア<input name="area" maxlength="40" placeholder="例: 名古屋"></label>
+    <label>URL(お店のページ・地図など)<input name="url" type="url" placeholder="https://"></label>
+    <label>メモ<textarea name="memo" rows="2" maxlength="200" placeholder="例: 冬にイルミネーションあり"></textarea></label>
+    <input type="hidden" name="id">
+    <div class="actions">
+      <button type="button" id="btnDeletePlace" class="danger" hidden>削除</button>
+      <span class="grow"></span>
+      <button type="button" class="ghost" data-close>やめる</button>
+      <button type="submit" class="primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
