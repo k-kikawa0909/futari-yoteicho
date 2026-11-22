@@ -16,7 +16,9 @@ service cloud.firestore {
 
     // ---- ペアの部屋そのもの(名前・メンバー) ----
     match /rooms/{r} {
-      allow read: if request.auth != null;
+      // ペアコード(= この文書の名前)を知っている人だけが1件ずつ読める。一覧は取れない
+      allow get: if request.auth != null;
+      allow list: if false;
 
       // 招待する側(ひとり目)が部屋を作る
       allow create: if request.auth != null
