@@ -40,6 +40,7 @@
 
   <!-- カレンダー -->
   <section id="calendar" class="view" hidden>
+    <div id="countdowns" class="countdowns"></div>
     <div class="cal-head">
       <button id="prevMonth" class="icon" aria-label="前の月">‹</button>
       <h2 id="monthLabel"></h2>
@@ -59,13 +60,29 @@
 
   <!-- 行きたい所 -->
   <section id="places" class="view" hidden>
-    <div class="seg">
-      <button data-filter="todo" class="on">行きたい</button>
-      <button data-filter="done">行った</button>
-      <button data-filter="all">ぜんぶ</button>
+    <div class="places-head">
+      <div class="seg" id="placeSeg">
+        <button data-filter="todo" class="on">行きたい</button>
+        <button data-filter="done">行った</button>
+        <button data-filter="all">ぜんぶ</button>
+      </div>
+      <button id="btnRoulette" class="roulette-btn">🎲 どこ行く?</button>
+    </div>
+    <div class="chips" id="genreChips"></div>
+    <div class="sort-row">
+      <select id="placeSort" aria-label="並べ方">
+        <option value="new">新しい順</option>
+        <option value="want">行きたい度順</option>
+      </select>
     </div>
     <ul id="placeList" class="list"></ul>
     <button id="btnAddPlace" class="fab" aria-label="行きたい所を追加">＋</button>
+  </section>
+
+  <!-- 思い出 -->
+  <section id="album" class="view" hidden>
+    <p class="muted">「行った」にした場所が、思い出としてここに並びます。写真や感想を残しておこう。</p>
+    <ul id="albumList" class="album"></ul>
   </section>
 
   <!-- 設定 -->
@@ -78,6 +95,24 @@
         <select id="whoAmI"><option value="a">ひとり目</option><option value="b">ふたり目</option></select>
       </label>
       <button id="btnSaveNames" class="primary">保存</button>
+    </div>
+    <div class="card">
+      <h2>記念日・誕生日</h2>
+      <p class="muted">カレンダーの上に「あと○日」が出ます。</p>
+      <ul id="annivList" class="list compact"></ul>
+      <form id="annivForm" class="anniv-form">
+        <label>名前<input name="title" required maxlength="20" placeholder="例: 付き合った日 / みさきの誕生日"></label>
+        <div class="row2">
+          <label>日付<input name="date" type="date" required></label>
+          <label>数え方
+            <select name="kind">
+              <option value="since">この日から○日目</option>
+              <option value="yearly">毎年の記念日まであと○日</option>
+            </select>
+          </label>
+        </div>
+        <button type="submit" class="small">＋ 追加</button>
+      </form>
     </div>
     <div class="card">
       <h2>ペアコード</h2>
@@ -97,8 +132,9 @@
   </section>
 
   <nav class="tabs" id="tabs" hidden>
-    <button data-view="calendar" class="on"><span>📅</span>カレンダー</button>
-    <button data-view="places"><span>📍</span>行きたい所</button>
+    <button data-view="calendar" class="on"><span>📅</span>カレンダー<i class="badge" data-badge="calendar"></i></button>
+    <button data-view="places"><span>📍</span>行きたい所<i class="badge" data-badge="places"></i></button>
+    <button data-view="album"><span>📷</span>思い出<i class="badge" data-badge="album"></i></button>
     <button data-view="settings"><span>⚙️</span>設定</button>
   </nav>
 </div>
@@ -112,6 +148,8 @@
       <label>日付<input name="date" type="date" required></label>
       <label>時間<input name="time" type="time"></label>
     </div>
+    <label>終わりの日(旅行など何日か続くとき)<input name="endDate" type="date"></label>
+    <label>場所<input name="location" maxlength="60" placeholder="例: 名古屋駅"></label>
     <fieldset class="who">
       <legend>だれの予定?</legend>
       <label><input type="radio" name="who" value="both" checked><span class="dot both"></span><span class="wname" data-w="both">ふたり</span></label>
@@ -119,12 +157,13 @@
       <label><input type="radio" name="who" value="b"><span class="dot b"></span><span class="wname" data-w="b"></span></label>
     </fieldset>
     <label>メモ<textarea name="memo" rows="2" maxlength="200"></textarea></label>
+    <p id="eventMsg" class="error"></p>
     <input type="hidden" name="id">
     <input type="hidden" name="placeId">
     <div class="actions">
       <button type="button" id="btnDeleteEvent" class="danger" hidden>削除</button>
       <span class="grow"></span>
-      <button type="button" value="cancel" class="ghost" data-close>やめる</button>
+      <button type="button" class="ghost" data-close>やめる</button>
       <button type="submit" class="primary">保存</button>
     </div>
   </form>
@@ -135,8 +174,9 @@
   <form method="dialog" id="placeForm">
     <h2 id="placeDialogTitle">行きたい所を追加</h2>
     <label>名前<input name="title" required maxlength="40" placeholder="例: 〇〇水族館"></label>
+    <label>ジャンル<select name="genre" id="genreSelect"></select></label>
     <label>場所・エリア<input name="area" maxlength="40" placeholder="例: 名古屋"></label>
-    <label>URL(お店のページ・地図など)<input name="url" type="url" placeholder="https://"></label>
+    <label>URL(お店のページなど)<input name="url" type="url" placeholder="https://"></label>
     <label>メモ<textarea name="memo" rows="2" maxlength="200" placeholder="例: 冬にイルミネーションあり"></textarea></label>
     <input type="hidden" name="id">
     <div class="actions">
@@ -146,6 +186,58 @@
       <button type="submit" class="primary">保存</button>
     </div>
   </form>
+</dialog>
+
+<!-- 思い出 -->
+<dialog id="memoryDialog">
+  <form method="dialog" id="memoryForm">
+    <h2 id="memoryTitle">思い出</h2>
+    <label>行った日<input name="visitedOn" type="date"></label>
+    <div class="review-mine">
+      <div class="review-head"><span class="dot" id="myDot"></span><b id="myName"></b> の感想</div>
+      <div class="stars" id="myStars" role="radiogroup" aria-label="評価"></div>
+      <textarea name="text" rows="2" maxlength="300" placeholder="楽しかったこと、また行きたい?"></textarea>
+    </div>
+    <div class="review-partner" id="partnerReview"></div>
+    <div class="photos-head">
+      <h3>写真</h3>
+      <label class="photo-add">＋ 写真を追加<input type="file" id="photoInput" accept="image/*" multiple hidden></label>
+    </div>
+    <p id="photoMsg" class="muted"></p>
+    <div class="photo-grid" id="photoGrid"></div>
+    <input type="hidden" name="placeId">
+    <input type="hidden" name="stars">
+    <div class="actions">
+      <span class="grow"></span>
+      <button type="button" class="ghost" data-close>閉じる</button>
+      <button type="submit" class="primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 写真を大きく -->
+<dialog id="photoDialog" class="photo-view">
+  <img id="photoBig" alt="">
+  <div class="actions">
+    <button type="button" id="btnDeletePhoto" class="danger small">この写真を削除</button>
+    <span class="grow"></span>
+    <button type="button" class="ghost" data-close>閉じる</button>
+  </div>
+</dialog>
+
+<!-- ルーレット -->
+<dialog id="rouletteDialog">
+  <div class="roulette">
+    <p class="muted" id="rouletteNote"></p>
+    <div class="roulette-name" id="rouletteName">…</div>
+    <div class="roulette-sub" id="rouletteSub"></div>
+    <div class="actions">
+      <button type="button" id="btnSpinAgain">もう一回</button>
+      <span class="grow"></span>
+      <button type="button" class="ghost" data-close>閉じる</button>
+      <button type="button" id="btnRoulettePlan" class="primary">予定にする</button>
+    </div>
+  </div>
 </dialog>
 
 <div id="toast" class="toast" hidden></div>

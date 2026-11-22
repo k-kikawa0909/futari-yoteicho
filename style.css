@@ -29,6 +29,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg);
@@ -177,6 +178,94 @@ fieldset.who input { width: auto; margin: 0 6px 0 0; display: inline-block; }
 
 .code-box { display: flex; gap: 8px; align-items: center; background: var(--bg); border: 1px dashed var(--line); border-radius: 10px; padding: 10px; }
 .code-box code { flex: 1; font-size: 14px; word-break: break-all; }
+
+/* NEW 印・タブの数字 */
+.new {
+  display: inline-block; margin-left: 6px; vertical-align: 2px;
+  font-size: 10px; font-weight: 700; letter-spacing: .03em;
+  background: var(--accent); color: var(--accent-ink); border-radius: 99px; padding: 1px 6px;
+}
+.tabs button { position: relative; }
+.badge {
+  position: absolute; top: 4px; left: calc(50% + 6px);
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 99px;
+  background: var(--danger); color: #fff; font-size: 10px; font-style: normal; font-weight: 700;
+  display: grid; place-items: center;
+}
+.badge:empty, .badge[hidden] { display: none; }
+
+/* カウントダウン */
+.countdowns { display: flex; gap: 8px; overflow-x: auto; margin: 0 -16px 12px; padding: 0 16px 4px; scroll-snap-type: x mandatory; }
+.countdowns[hidden] { display: none; }
+.cd {
+  flex: none; min-width: 150px; scroll-snap-align: start;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px;
+}
+.cd.since { background: linear-gradient(135deg, rgba(240,106,138,.14), rgba(155,106,216,.12)); }
+.cd.date { cursor: pointer; }
+.cd-t { font-size: 12px; color: var(--muted); }
+.cd-n { font-size: 14px; margin-top: 2px; }
+.cd-n b { font-size: 24px; margin: 0 2px; color: var(--accent); }
+.cd-s { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+
+/* カレンダーの記念日・続く予定 */
+.cell { position: relative; }
+.cell .heart { position: absolute; top: 2px; right: 4px; font-size: 10px; color: var(--accent); }
+.dot.long { width: 14px; }
+.item.anniv { border-left-color: var(--accent); background: linear-gradient(90deg, rgba(240,106,138,.10), transparent); }
+.list.compact .item { padding: 8px 10px; }
+.map-btn { align-self: center; font-size: 20px; text-decoration: none; padding: 4px; }
+
+/* 行きたい所 */
+.places-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.places-head .seg { flex: 1; margin: 0; min-width: 0; }
+.places-head .seg button { padding: 8px 2px; white-space: nowrap; font-size: 13px; }
+.roulette-btn { padding: 9px 10px; font-size: 14px; }
+.roulette-btn { white-space: nowrap; font-weight: 600; border-color: var(--accent); color: var(--accent); }
+.chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px 8px; padding: 0 16px 2px; }
+.chip { flex: none; padding: 6px 12px; border-radius: 99px; font-size: 13px; }
+.chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.sort-row { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.sort-row select { width: auto; margin: 0; padding: 6px 10px; font-size: 13px; }
+.item .s.want { color: var(--accent); }
+.item .s.want.both { font-weight: 700; }
+.item .s.links { display: flex; gap: 14px; }
+.item .s.links a { text-decoration: none; }
+.heart-btn { width: 40px; height: 34px; padding: 0; font-size: 18px; color: var(--accent); }
+.heart-btn.on { background: rgba(240,106,138,.12); border-color: var(--accent); }
+
+/* ルーレット */
+.roulette { text-align: center; }
+.roulette-name { font-size: 24px; font-weight: 700; margin: 18px 0 6px; min-height: 1.4em; word-break: break-word; }
+.roulette-name.spinning { color: var(--muted); }
+.roulette-sub { color: var(--muted); font-size: 13px; min-height: 1.2em; }
+
+/* 思い出 */
+.album { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.album-item { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; cursor: pointer; }
+.album-item img, .album-item .noimg { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.album-item .noimg { display: grid; place-items: center; font-size: 40px; background: var(--bg); }
+.album-body { padding: 8px 10px 10px; }
+.album-body .t { font-weight: 600; font-size: 14px; word-break: break-word; }
+.album-body .s { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.album .empty { grid-column: 1 / -1; }
+.stars-s { color: #f2a93b; letter-spacing: 1px; }
+.review-mine, .review-partner { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+.review-partner { background: var(--bg); font-size: 14px; }
+.review-head { font-size: 13px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.stars { display: flex; gap: 2px; }
+.star { border: 0; background: transparent; font-size: 28px; padding: 0 2px; color: var(--line); }
+.star.on { color: #f2a93b; }
+.photos-head { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.photos-head h3 { white-space: nowrap; }
+.photo-add { margin: 0; color: var(--accent); font-weight: 600; font-size: 14px; cursor: pointer; border: 1px solid var(--accent); border-radius: 10px; padding: 6px 10px; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.photo-grid .muted { grid-column: 1 / -1; }
+.photo { position: relative; padding: 0; border: 0; border-radius: 8px; overflow: hidden; aspect-ratio: 1; }
+.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo .new { position: absolute; top: 4px; left: 0; }
+dialog.photo-view { padding: 10px; }
+.photo-view img { width: 100%; max-height: 70vh; object-fit: contain; border-radius: 10px; display: block; }
 
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%);
