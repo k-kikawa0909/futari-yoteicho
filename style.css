@@ -167,8 +167,12 @@ dialog {
   background: var(--card); color: var(--text);
 }
 dialog::backdrop { background: rgba(0,0,0,.4); }
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.row2 label { margin: 10px 0 0; }
+.row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.row2 label { margin: 10px 0 0; min-width: 0; }
+.row2 input, .row2 select { min-width: 0; max-width: 100%; }
+input[type="date"], input[type="time"] { -webkit-appearance: none; appearance: none; min-height: 44px; }
+/* 記念日の入力は幅が足りないので縦に並べる */
+.anniv-form .row2 { grid-template-columns: minmax(0, 1fr); gap: 0; }
 fieldset.who { border: 1px solid var(--line); border-radius: 10px; margin: 12px 0 0; padding: 6px 10px 10px; }
 fieldset.who legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
 fieldset.who label { display: inline-flex; align-items: center; gap: 2px; margin: 6px 14px 0 0; color: var(--text); font-size: 15px; }
@@ -266,6 +270,14 @@ fieldset.who input { width: auto; margin: 0 6px 0 0; display: inline-block; }
 .photo .new { position: absolute; top: 4px; left: 0; }
 dialog.photo-view { padding: 10px; }
 .photo-view img { width: 100%; max-height: 70vh; object-fit: contain; border-radius: 10px; display: block; }
+
+/* スワイプの動き */
+@keyframes slideNext { from { transform: translateX(36px); opacity: .3; } to { transform: none; opacity: 1; } }
+@keyframes slidePrev { from { transform: translateX(-36px); opacity: .3; } to { transform: none; opacity: 1; } }
+.slide-next { animation: slideNext .22s ease-out; }
+.slide-prev { animation: slidePrev .22s ease-out; }
+@media (prefers-reduced-motion: reduce) { .slide-next, .slide-prev { animation: none; } }
+body { overflow-x: hidden; }
 
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%);

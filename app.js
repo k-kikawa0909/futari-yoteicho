@@ -767,8 +767,50 @@ function start() {
 }
 
 $$("#tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
-$("#prevMonth").addEventListener("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() - 1, 1); renderCalendar(); });
-$("#nextMonth").addEventListener("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 1); renderCalendar(); });
+
+function moveMonth(step) {
+  state.month = new Date(state.month.getFullYear(), state.month.getMonth() + step, 1);
+  renderCalendar();
+  animate($("#grid"), step);
+}
+$("#prevMonth").addEventListener("click", () => moveMonth(-1));
+$("#nextMonth").addEventListener("click", () => moveMonth(1));
+
+/* ---------- スワイプ ----------
+   カレンダーの日付の部分を左右にスワイプ → 月を変える
+   それ以外の場所を左右にスワイプ → となりのタブへ */
+const TAB_ORDER = ["calendar", "places", "album", "settings"];
+function animate(el, step) {
+  el.classList.remove("slide-next", "slide-prev");
+  void el.offsetWidth; // アニメーションをやり直すため
+  el.classList.add(step > 0 ? "slide-next" : "slide-prev");
+}
+let touch = null;
+document.addEventListener("touchstart", (ev) => {
+  touch = null;
+  if (ev.touches.length !== 1 || document.querySelector("dialog[open]")) return;
+  const target = ev.target;
+  // 横にスクロールする部分や入力欄では反応させない
+  if (target.closest(".countdowns, .chips, input, textarea, select, .tabs")) return;
+  const t = ev.touches[0];
+  touch = { x: t.clientX, y: t.clientY, at: Date.now(), inCal: !!target.closest("#grid, .cal-head, .weekdays, .legend") };
+}, { passive: true });
+document.addEventListener("touchend", (ev) => {
+  if (!touch || !state.device || !TAB_ORDER.includes(currentView)) return;
+  const t = ev.changedTouches[0];
+  const dx = t.clientX - touch.x;
+  const dy = t.clientY - touch.y;
+  const quick = Date.now() - touch.at < 800;
+  const inCal = touch.inCal;
+  touch = null;
+  if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  const step = dx < 0 ? 1 : -1; // 左へスワイプ → 次
+  if (inCal && currentView === "calendar") { moveMonth(step); return; }
+  const next = TAB_ORDER[TAB_ORDER.indexOf(currentView) + step];
+  if (!next) return;
+  show(next);
+  animate($("#" + next), step);
+}, { passive: true });
 $("#btnAddEvent").addEventListener("click", () => openEvent({ date: state.selected }));
 $("#btnAddPlace").addEventListener("click", () => openPlace());
 $$("#placeSeg button").forEach((b) => b.addEventListener("click", () => { state.filter = b.dataset.filter; renderPlaces(); }));
