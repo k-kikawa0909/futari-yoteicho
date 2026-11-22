@@ -40,6 +40,9 @@ python -m http.server 8765 --directory C:\couple_app
 ※ この `firebaseConfig` はアプリを見分けるための値で、パスワードではありません(公開しても大丈夫な値です)。データはルールとペアコードで守られます。
 
 ## 3. スマホで開けるように公開する(GitHub Pages)
+**2026-11-22 済み**: https://k-kikawa0909.github.io/futari-yoteicho/ (リポジトリ k-kikawa0909/futari-yoteicho)。
+直したら `git add -A`、`git commit`、`git push` で数分後に反映されます。
+
 1. GitHub で新しいリポジトリ(例: futari-yoteicho)を作る
 2. このフォルダの中身をアップロードする
 3. リポジトリの Settings → Pages → Branch を `main` にして保存
