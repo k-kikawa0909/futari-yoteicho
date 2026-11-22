@@ -71,6 +71,8 @@ const state = {
   events: [],
   anniv: [],
   photos: [],
+  albums: [],
+  questions: [],
   posts: [],
   profiles: { a: {}, b: {} },
   month: (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
@@ -85,10 +87,58 @@ const partner = () => (me() === "a" ? "b" : "a");
 const nameOf = (w) => w === "both" ? "ふたり" : (state.names[w] || (w === "a" ? "ひとり目" : "ふたり目"));
 const room = () => state.device.room;
 
+/* ---------- 色(画面のテーマはこの端末だけ / ふたりの色はプロフィールで共有) ---------- */
+const THEMES = [
+  { id: "pink", name: "ピンク", accent: "#f06a8a", bg: "#fff8f9", line: "#f0dfe4" },
+  { id: "blue", name: "ブルー", accent: "#3d8bfd", bg: "#f5f9ff", line: "#dce8f7" },
+  { id: "mint", name: "ミント", accent: "#25a98f", bg: "#f3fbf8", line: "#d5ede6" },
+  { id: "lavender", name: "ラベンダー", accent: "#8e6bd8", bg: "#f8f5ff", line: "#e5ddf6" },
+  { id: "orange", name: "オレンジ", accent: "#ee8433", bg: "#fff8f2", line: "#f3e2d3" },
+  { id: "mono", name: "モノトーン", accent: "#4b5260", bg: "#f6f6f6", line: "#e2e2e2" },
+];
+const PERSON_COLORS = ["#4a90e2", "#f06a8a", "#25a98f", "#8e6bd8", "#ee8433", "#e0b43a", "#e05a5a", "#3fb6d8", "#7a8b99"];
+const DEFAULT_COLOR = { a: "#4a90e2", b: "#f06a8a" };
+const THEME_KEY = "couple:theme";
+function loadTheme() { try { return JSON.parse(localStorage.getItem(THEME_KEY) || "{}"); } catch { return {}; } }
+function saveTheme(t) { try { localStorage.setItem(THEME_KEY, JSON.stringify(t)); } catch {} }
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+function applyColors() {
+  const t = loadTheme();
+  const theme = THEMES.find((x) => x.id === t.theme) || THEMES[0];
+  const mode = t.mode || "auto";
+  const root = document.documentElement;
+  root.dataset.mode = mode;
+  const dark = mode === "dark" || (mode === "auto" && darkQuery.matches);
+  root.style.setProperty("--accent", theme.accent);
+  if (dark) { root.style.removeProperty("--bg"); root.style.removeProperty("--line"); }
+  else { root.style.setProperty("--bg", theme.bg); root.style.setProperty("--line", theme.line); }
+  for (const w of ["a", "b"]) {
+    const c = (state.profiles[w] && state.profiles[w].color) || DEFAULT_COLOR[w];
+    root.style.setProperty("--" + w, c);
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = theme.accent;
+}
+darkQuery.addEventListener("change", applyColors);
+applyColors();
+
+function renderThemeSettings() {
+  const t = loadTheme();
+  $("#themeList").replaceChildren(...THEMES.map((x) =>
+    h("button", { type: "button", class: `theme ${(t.theme || "pink") === x.id ? "on" : ""}`, onclick: () => { saveTheme({ ...loadTheme(), theme: x.id }); applyColors(); renderThemeSettings(); } },
+      h("i", { style: `background:${x.accent}` }), x.name)));
+  $$("#modeSeg button").forEach((b) => b.classList.toggle("on", (t.mode || "auto") === b.dataset.mode));
+}
+$$("#modeSeg button").forEach((b) => b.addEventListener("click", () => {
+  saveTheme({ ...loadTheme(), mode: b.dataset.mode });
+  applyColors();
+  renderThemeSettings();
+}));
+
 /* ---------- 「相手が追加した新しいもの」 ----------
    タブ(カレンダー/行きたい所/思い出)ごとに「最後に見た時刻」を覚えておき、
    それより後に相手が追加したものに NEW を付ける。タブを離れた時に「見た」ことにする。 */
-const CATS = ["calendar", "now", "places", "album"];
+const CATS = ["calendar", "now", "album"]; // 行きたい所は「予定」タブの中なので calendar に含める
 let currentView = null;
 const snap = {}; // 今表示している NEW の基準(タブに入った時点の「最後に見た時刻」)
 function seenOf(cat) { return (state.device.seen && state.device.seen[cat]) || state.device.lastSeen || 0; }
@@ -112,13 +162,14 @@ function renderBadges() {
   // バッジは「まだ開いていないタブ」の新着の数
   const unseen = (x, cat) => x.addedBy && x.addedBy !== me() && (x.createdAt || 0) > seenOf(cat);
   const counts = {
-    calendar: state.events.filter((x) => unseen(x, "calendar")).length,
-    places: state.places.filter((p) => !p.done && unseen(p, "places")).length,
+    calendar: state.events.filter((x) => unseen(x, "calendar")).length + state.places.filter((p) => !p.done && unseen(p, "calendar")).length,
     album: state.photos.filter((x) => unseen(x, "album")).length,
     now: state.posts.filter((x) => unseen(x, "now")).length,
   };
+  const qs = questionsToMe().length; // 答えていない質問は、見ても答えるまで数字を出したまま
   $$("[data-badge]").forEach((b) => {
-    const n = b.dataset.badge === currentView ? 0 : counts[b.dataset.badge] || 0;
+    const k = b.dataset.badge;
+    const n = (k === currentView ? 0 : counts[k] || 0) + (k === "now" ? qs : 0);
     b.textContent = n ? String(n) : "";
     b.hidden = !n;
   });
@@ -325,7 +376,7 @@ function renderPlaces() {
         onclick: () => toggleDone(p),
       }, "✓"),
       h("div", { class: "body", onclick: () => (p.done ? openMemory(p) : openPlace(p)) },
-        h("div", { class: "t" }, p.title, newBadge(p, "places")),
+        h("div", { class: "t" }, p.title, newBadge(p, "calendar")),
         h("div", { class: "s" }, [genreLabel(p.genre), p.area, `${nameOf(p.addedBy)}が追加`].filter(Boolean).join(" · ")),
         wantText ? h("div", { class: `s want ${both ? "both" : ""}` }, wantText) : null,
         p.memo ? h("div", { class: "s" }, p.memo) : null,
@@ -499,9 +550,9 @@ function loadImage(file) {
     img.src = url;
   });
 }
-async function compress(file) {
+async function compress(file, maxSide = 1080, target = 300000) {
   const img = await loadImage(file);
-  let max = 1080, q = 0.72, data = "";
+  let max = maxSide, q = 0.72, data = "";
   for (let i = 0; i < 6; i++) {
     const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
     const c = document.createElement("canvas");
@@ -509,7 +560,7 @@ async function compress(file) {
     c.height = Math.round(img.naturalHeight * r);
     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
     data = c.toDataURL("image/jpeg", q);
-    if (data.length < 300000) break;
+    if (data.length < target) break;
     max = Math.round(max * 0.8);
     q = Math.max(0.5, q - 0.06);
   }
@@ -540,6 +591,8 @@ function openPhoto(x) {
   viewingPhoto = x;
   $("#photoBig").src = x.data;
   $("#btnDeletePhoto").hidden = !mine(x);
+  $("#btnSavePhoto").href = x.data;
+  $("#photoCaption").textContent = `${nameOf(x.addedBy)}が追加 · ${timeAgo(x.createdAt)}`;
   $("#photoDialog").showModal();
 }
 $("#btnDeletePhoto").addEventListener("click", () => {
@@ -660,7 +713,8 @@ $("#btnDeletePlace").addEventListener("click", () => {
 });
 
 $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
-$$("dialog").forEach((d) => d.addEventListener("click", (ev) => { if (ev.target === d) d.close(); }));
+// 外側(暗いところ)を押したら閉じる。全画面のアルバムは除く
+$$("dialog:not(.full)").forEach((d) => d.addEventListener("click", (ev) => { if (ev.target === d) d.close(); }));
 
 /* ---------- 設定 ---------- */
 function renderSettings() {
@@ -672,6 +726,7 @@ function renderSettings() {
   $("#partnerNameDot").className = `dot ${partner()}`;
   $("#pairCode").textContent = room();
   $("#recoveryCode").textContent = state.device.recovery || "(まだありません)";
+  renderThemeSettings();
   renderAnnivList();
 }
 
@@ -953,7 +1008,7 @@ function torisetsu() {
   return h("div", { class: "compat-sec torisetsu" }, h("div", { class: "compat-title" }, h("span", {}, "📖 ふたりのトリセツ")), h("ul", {}, ...lines));
 }
 
-const PROFILE_KEYS = ["birthday", "blood", "mbti", "loveName", "hobby", "food", "happy", "ng", "memo", "love_lf", "love_ca", "love_rp", "love_eo"];
+const PROFILE_KEYS = ["color", "birthday", "blood", "mbti", "loveName", "hobby", "food", "happy", "ng", "memo", "love_lf", "love_ca", "love_rp", "love_eo"];
 $("#pfBlood").replaceChildren(h("option", { value: "" }, "未入力"), ...BLOOD.map((b) => h("option", { value: b }, `${b}型`)));
 $("#pfMbti").replaceChildren(h("option", { value: "" }, "未入力"), ...MBTI.map((m) => h("option", { value: m }, `${m} ${MBTI_NICK[m]}`)));
 $("#pfLove").replaceChildren(...LOVE_AXES.map((ax) =>
@@ -974,8 +1029,23 @@ function openProfile(w) {
   for (const k of PROFILE_KEYS) f.elements[k].value = p[k] || "";
   pendingAvatar = null;
   showAvatarPreview(p.avatar);
+  renderSwatches(p.color || DEFAULT_COLOR[w]);
   $("#profileTitle").textContent = `${nameOf(w)}のプロフィール`;
   $("#profileDialog").showModal();
+}
+
+// 自分の色を選ぶ(決まった色 + 好きな色)
+function renderSwatches(current) {
+  $("#profileForm").elements.color.value = current;
+  const custom = !PERSON_COLORS.includes(current);
+  const picker = h("input", { type: "color", value: current, "aria-label": "好きな色を選ぶ" });
+  picker.addEventListener("change", () => renderSwatches(picker.value));
+  $("#colorSwatches").replaceChildren(
+    ...PERSON_COLORS.map((c) => h("button", {
+      type: "button", class: `swatch ${c === current ? "on" : ""}`, style: `background:${c}`, "aria-label": c,
+      onclick: () => renderSwatches(c),
+    })),
+    h("label", { class: `swatch custom ${custom ? "on" : ""}`, style: custom ? `background:${current}` : "", title: "好きな色" }, custom ? "" : "＋", picker));
 }
 
 // アイコン写真: 真ん中を正方形に切り取って小さくする
@@ -1027,10 +1097,218 @@ const latestPost = (w) => state.posts.filter((p) => p.addedBy === w).sort((x, y)
 function nowCard(w) {
   const p = latestPost(w);
   return h("div", { class: `now-card ${w}` },
-    h("div", { class: "now-who" }, avatar(w, "sm"), h("b", {}, nameOf(w)), h("span", { class: "muted" }, p ? timeAgo(p.createdAt) : "")),
-    p && p.photo ? h("img", { class: "now-photo", src: p.photo, alt: "", onclick: () => openPostPhoto(p) }) : null,
+    h("div", { class: "now-who" }, storyAvatar(w, "sm"), h("b", {}, nameOf(w)), h("span", { class: "muted" }, p ? timeAgo(p.createdAt) : "")),
+    p && p.photo ? h("img", { class: "now-photo", src: p.photo, alt: "", onclick: () => openStory(w, p.id) }) : null,
     h("div", { class: "now-text" }, p ? (p.text || "📷") : "まだ投稿がありません"));
 }
+
+/* ---------- ストーリー(写真付きの「いま」。24時間以内のものをアイコンから見る) ---------- */
+const STORY_MS = 5000;
+const STORY_SEEN_KEY = "couple:storySeen";
+function storySeen() { try { return JSON.parse(localStorage.getItem(STORY_SEEN_KEY) || "{}"); } catch { return {}; } }
+function storiesOf(w) {
+  const since = Date.now() - 24 * 3600 * 1000;
+  return state.posts.filter((p) => p.addedBy === w && p.photo && (p.createdAt || 0) > since)
+    .sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+}
+// ストーリーがあるアイコンは色の輪で囲む(見たら灰色)
+function storyAvatar(w, size) {
+  const list = storiesOf(w);
+  const seen = storySeen()[w] || 0;
+  const cls = !list.length ? "" : list.some((p) => (p.createdAt || 0) > seen) ? "has" : "seen";
+  return h("button", { type: "button", class: `avatar-ring ${cls}`, "aria-label": `${nameOf(w)}のストーリー`,
+    onclick: (ev) => { ev.stopPropagation(); if (list.length) openStory(w); else toast("24時間以内の写真はありません"); } }, avatar(w, size));
+}
+const story = { w: null, list: [], i: 0, timer: null };
+function openStory(w, startId) {
+  const list = storiesOf(w);
+  if (!list.length) { const p = state.posts.find((x) => x.id === startId); if (p) openPostPhoto(p); return; }
+  const seen = storySeen()[w] || 0;
+  let i = startId ? list.findIndex((p) => p.id === startId) : list.findIndex((p) => (p.createdAt || 0) > seen);
+  if (i < 0) i = 0;
+  Object.assign(story, { w, list, i });
+  $("#story").hidden = false;
+  showStory();
+}
+function showStory() {
+  clearTimeout(story.timer);
+  const p = story.list[story.i];
+  if (!p) { closeStory(); return; }
+  $("#storyImg").src = p.photo;
+  $("#storyText").textContent = p.text || "";
+  $("#storyHead").replaceChildren(avatar(story.w, "sm"), h("b", {}, nameOf(story.w)), h("span", {}, timeAgo(p.createdAt)));
+  $("#storyBars").replaceChildren(...story.list.map((_, k) => h("span", { class: k < story.i ? "done" : "" }, h("i"))));
+  const bar = $("#storyBars").children[story.i].firstChild;
+  requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transition = `width ${STORY_MS}ms linear`; bar.style.width = "100%"; }));
+  // 見たところまで覚えておく
+  const seen = storySeen();
+  if ((p.createdAt || 0) > (seen[story.w] || 0)) { seen[story.w] = p.createdAt; try { localStorage.setItem(STORY_SEEN_KEY, JSON.stringify(seen)); } catch {} }
+  story.timer = setTimeout(() => { story.i++; showStory(); }, STORY_MS);
+}
+function closeStory() {
+  clearTimeout(story.timer);
+  $("#story").hidden = true;
+  renderNow();
+}
+$("#storyNext").addEventListener("click", () => { story.i++; showStory(); });
+$("#storyPrev").addEventListener("click", () => { story.i = Math.max(0, story.i - 1); showStory(); });
+$("#storyClose").addEventListener("click", closeStory);
+// 下にスワイプでも閉じる
+let storyTouch = null;
+$("#story").addEventListener("touchstart", (ev) => { storyTouch = ev.touches[0].clientY; }, { passive: true });
+$("#story").addEventListener("touchend", (ev) => {
+  if (storyTouch != null && ev.changedTouches[0].clientY - storyTouch > 90) closeStory();
+  storyTouch = null;
+}, { passive: true });
+
+/* ---------- ふたりの質問箱 ---------- */
+const ASK_IDEAS = [
+  "最近いちばん嬉しかったことは?", "次のデートでしたいことは?", "私の好きなところを3つ教えて",
+  "行ってみたい旅行先は?", "付き合う前の第一印象は?", "今いちばん食べたいものは?",
+  "10年後どんな暮らしをしていたい?", "私にしてほしいことはある?", "最近ハマってることは?",
+  "二人でやってみたいことは?", "生まれ変わったら何になりたい?", "子どものころの夢は?",
+];
+const questionsToMe = () => (state.device ? state.questions.filter((q) => q.to === me() && !q.answer) : []);
+
+function renderQuestions() {
+  if (!state.device) return;
+  const inbox = questionsToMe().sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+  $("#qInbox").replaceChildren(...inbox.map((q) => {
+    const ta = h("textarea", { rows: "2", maxlength: "300", placeholder: "答えを書いてね" });
+    return h("div", { class: "q to-me" },
+      h("div", { class: "q-head" }, avatar(q.addedBy, "sm"), `💌 ${nameOf(q.addedBy)}から質問が届いています`, h("span", { class: "grow" }), timeAgo(q.createdAt)),
+      h("div", { class: "q-text" }, q.text),
+      ta,
+      h("div", { class: "actions" }, h("span", { class: "grow" }),
+        h("button", { type: "button", class: "primary small", onclick: () => {
+          const answer = ta.value.trim();
+          if (!answer) { toast("答えを書いてね"); return; }
+          state.store.save(room(), "questions", q.id, { answer, answeredAt: Date.now() });
+          toast("答えを送りました 💌");
+        } }, "答える")));
+  }));
+  const rest = state.questions.filter((q) => !(q.to === me() && !q.answer))
+    .sort((x, y) => (y.answeredAt || y.createdAt || 0) - (x.answeredAt || x.createdAt || 0));
+  const items = rest.slice(0, 30).map((q) => h("div", { class: "q" },
+    h("div", { class: "q-head" }, `${nameOf(q.addedBy)} → ${nameOf(q.to)}`, h("span", { class: "grow" }),
+      q.answer ? timeAgo(q.answeredAt || q.createdAt) : h("span", {}, "返事待ち…"),
+      mine(q) ? h("button", { type: "button", class: "small ghost", onclick: () => {
+        if (!confirm("この質問を削除しますか?")) return;
+        state.store.remove(room(), "questions", q.id);
+      } }, "削除") : null),
+    h("div", { class: "q-text" }, `Q. ${q.text}`),
+    q.answer ? h("div", { class: "q-ans" }, h("b", {}, `${nameOf(q.to)}の答え`), q.answer) : null));
+  if (!inbox.length && !items.length) items.push(h("p", { class: "muted empty" }, "相手に聞いてみたいことを質問してみよう"));
+  $("#qList").replaceChildren(...items);
+  // 予定タブの上のお知らせ
+  const n = inbox.length;
+  $("#questionNotice").hidden = !n;
+  if (n) $("#questionNotice").textContent = `💌 ${nameOf(partner())}から質問が${n}件届いています`;
+  renderBadges();
+}
+$("#questionNotice").addEventListener("click", () => { show("now"); setTimeout(() => $("#qbox").scrollIntoView({ behavior: "smooth", block: "start" }), 50); });
+$("#btnAsk").addEventListener("click", () => {
+  const f = $("#askForm");
+  f.reset();
+  $("#askTitle").textContent = `${nameOf(partner())}に質問する`;
+  $("#askIdeas").replaceChildren(...ASK_IDEAS.map((q) => h("button", { type: "button", class: "chip", onclick: () => { f.text.value = q; } }, q)));
+  $("#askDialog").showModal();
+});
+$("#askForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const text = ev.target.text.value.trim();
+  if (!text) return;
+  state.store.save(room(), "questions", null, { text, addedBy: me(), to: partner(), answer: "" });
+  $("#askDialog").close();
+  toast(`${nameOf(partner())}に質問を送りました`);
+});
+
+/* ---------- 共有アルバム(LINE のアルバムのように二人で写真を入れる) ---------- */
+let albumTab = "albums";
+let openAlbumId = null;
+const albumPhotos = (id) => state.photos.filter((x) => x.albumId === id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+function renderAlbums() {
+  if (!state.device) return;
+  $$("#albumSeg button").forEach((b) => b.classList.toggle("on", b.dataset.tab === albumTab));
+  $("#albumsPane").hidden = albumTab !== "albums";
+  $("#visitedPane").hidden = albumTab !== "visited";
+  const list = state.albums.slice().sort((x, y) => {
+    const lx = albumPhotos(x.id).at(-1), ly = albumPhotos(y.id).at(-1);
+    return ((ly && ly.createdAt) || y.createdAt || 0) - ((lx && lx.createdAt) || x.createdAt || 0);
+  });
+  const items = list.map((a) => {
+    const ph = albumPhotos(a.id);
+    const fresh = ph.some((x) => isNew(x, "album")) || isNew(a, "album");
+    return h("li", { class: "album-item", onclick: () => openAlbum(a.id) },
+      ph.length ? h("img", { src: ph[ph.length - 1].data, alt: "", loading: "lazy" }) : h("div", { class: "noimg" }, "📚"),
+      h("div", { class: "album-body" },
+        h("div", { class: "t" }, a.title, fresh ? h("span", { class: "new" }, "NEW") : null),
+        h("div", { class: "s" }, `📷 ${ph.length}枚 · ${nameOf(a.addedBy)}が作成`)));
+  });
+  if (!items.length) items.push(h("li", { class: "empty" }, "「＋ アルバム」から作って、二人で写真を入れていこう"));
+  $("#albumsList").replaceChildren(...items);
+  if (openAlbumId) renderAlbumDialog();
+}
+$$("#albumSeg button").forEach((b) => b.addEventListener("click", () => { albumTab = b.dataset.tab; renderAlbums(); }));
+$("#btnNewAlbum").addEventListener("click", async () => {
+  const title = (prompt("アルバムの名前", "") || "").trim();
+  if (!title) return;
+  const id = await state.store.save(room(), "albums", null, { title: title.slice(0, 40), addedBy: me() });
+  toast("アルバムを作りました");
+  openAlbum(id);
+});
+function openAlbum(id) {
+  openAlbumId = id;
+  renderAlbumDialog();
+  if (!$("#albumDialog").open) $("#albumDialog").showModal();
+}
+$("#albumDialog").addEventListener("close", () => { openAlbumId = null; });
+function renderAlbumDialog() {
+  const a = state.albums.find((x) => x.id === openAlbumId);
+  if (!a) { $("#albumTitle").textContent = "アルバム"; $("#albumGrid").replaceChildren(); return; }
+  const ph = albumPhotos(a.id);
+  $("#albumTitle").textContent = a.title;
+  $("#albumInfo").textContent = `📷 ${ph.length}枚 · ${nameOf(a.addedBy)}が作成 · 二人とも写真を追加できます`;
+  $("#albumGrid").replaceChildren(...ph.map((x) =>
+    h("button", { type: "button", class: "photo", onclick: () => openPhoto(x) }, h("img", { src: x.data, alt: "", loading: "lazy" }), newBadge(x, "album"))));
+  if (!ph.length) $("#albumGrid").replaceChildren(h("p", { class: "muted" }, "まだ写真はありません。「＋ 写真を追加」から入れてね"));
+}
+$("#albumPhotoInput").addEventListener("change", async (ev) => {
+  const files = [...ev.target.files];
+  ev.target.value = "";
+  const albumId = openAlbumId;
+  if (!files.length || !albumId) return;
+  let ok = 0;
+  for (const [i, file] of files.entries()) {
+    $("#albumMsg").textContent = `保存しています… (${i + 1}/${files.length})`;
+    try {
+      const data = await compress(file, 1600, 600000);
+      await state.store.save(room(), "photos", null, { albumId, data, addedBy: me() });
+      ok++;
+    } catch (e) { console.error(e); }
+  }
+  $("#albumMsg").textContent = ok === files.length ? "" : `${files.length - ok}枚は保存できませんでした`;
+  if (ok) toast(`写真を${ok}枚追加しました`);
+});
+$("#btnAlbumMenu").addEventListener("click", async () => {
+  const a = state.albums.find((x) => x.id === openAlbumId);
+  if (!a) return;
+  if (!mine(a)) { toast(`${nameOf(a.addedBy)}が作ったアルバムです(名前の変更・削除は作った人だけ)`); return; }
+  const title = prompt("アルバムの名前を変える(空にして OK を押すと削除)", a.title);
+  if (title == null) return;
+  if (title.trim()) {
+    state.store.save(room(), "albums", a.id, { title: title.trim().slice(0, 40) });
+    toast("名前を変えました");
+    return;
+  }
+  const ph = albumPhotos(a.id);
+  if (ph.some((x) => !mine(x))) { toast(`${nameOf(partner())}の写真が入っているので削除できません`); return; }
+  if (!confirm(`アルバム「${a.title}」と中の写真${ph.length}枚を削除しますか?(元に戻せません)`)) return;
+  for (const x of ph) state.store.remove(room(), "photos", x.id);
+  state.store.remove(room(), "albums", a.id);
+  $("#albumDialog").close();
+  toast("アルバムを削除しました");
+});
 
 function renderNow() {
   if (!state.device) return;
@@ -1039,7 +1317,7 @@ function renderNow() {
     h("button", { type: "button", class: "chip", onclick: () => { $("#postText").value = q; $("#postText").focus(); } }, q)));
   const list = state.posts.slice().sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0));
   const items = list.map((p) => h("li", { class: `post ${p.addedBy}` },
-    avatar(p.addedBy, "sm"),
+    storyAvatar(p.addedBy, "sm"),
     h("div", { class: "post-body" },
       h("div", { class: "post-head" }, h("b", {}, nameOf(p.addedBy)), h("span", { class: "muted" }, timeAgo(p.createdAt)), newBadge(p, "now"),
         h("span", { class: "grow" }),
@@ -1048,7 +1326,7 @@ function renderNow() {
           state.store.remove(room(), "posts", p.id);
         } }, "削除") : null),
       p.text ? h("div", { class: "post-text" }, p.text) : null,
-      p.photo ? h("img", { class: "post-photo", src: p.photo, alt: "", loading: "lazy", onclick: () => openPostPhoto(p) }) : null)));
+      p.photo ? h("img", { class: "post-photo", src: p.photo, alt: "", loading: "lazy", onclick: () => openStory(p.addedBy, p.id) }) : null)));
   if (!items.length) items.push(h("li", { class: "empty" }, "「いま何してる?」を写真や文字で送ってみよう"));
   $("#postList").replaceChildren(...items);
   renderBadges();
@@ -1058,6 +1336,8 @@ function openPostPhoto(p) {
   viewingPhoto = null;
   $("#photoBig").src = p.photo;
   $("#btnDeletePhoto").hidden = true;
+  $("#btnSavePhoto").href = p.photo;
+  $("#photoCaption").textContent = `${nameOf(p.addedBy)} · ${timeAgo(p.createdAt)}`;
   $("#photoDialog").showModal();
 }
 
@@ -1101,6 +1381,7 @@ function renderSplash() {
       h("div", { class: "splash-person" }, avatar(partner(), "xl"), h("div", {}, nameOf(partner())))),
     since ? h("div", { class: "splash-days" }, "付き合って ", h("b", {}, (daysBetween(since.date, today) + 1).toLocaleString()), " 日目") : null,
     p ? h("div", { class: "splash-now" }, `${nameOf(partner())}のいま: ${p.text || "📷 写真"}(${timeAgo(p.createdAt)})`) : null,
+    questionsToMe().length ? h("div", { class: "splash-now splash-q" }, `💌 ${nameOf(partner())}から質問が${questionsToMe().length}件届いています`) : null,
     h("div", { class: "splash-tap" }, "タップしてはじめる")].filter(Boolean));
 }
 function openSplash() {
@@ -1119,8 +1400,10 @@ function rerender() {
   renderCalendar();
   renderPlaces();
   renderAlbum();
+  renderAlbums();
   renderCouple();
   renderNow();
+  renderQuestions();
   renderSplash();
   if (!$("#settings").hidden) renderSettings();
 }
@@ -1139,10 +1422,13 @@ function start() {
     }),
     state.store.watch(r, "events", (list) => { state.events = list; renderCalendar(); renderPlaces(); }),
     state.store.watch(r, "anniv", (list) => { state.anniv = list; renderCalendar(); if (!$("#settings").hidden) renderAnnivList(); }),
-    state.store.watch(r, "photos", (list) => { state.photos = list; renderAlbum(); renderMemoryPhotos(); }),
+    state.store.watch(r, "photos", (list) => { state.photos = list; renderAlbum(); renderAlbums(); renderMemoryPhotos(); }),
+    state.store.watch(r, "albums", (list) => { state.albums = list; renderAlbums(); }),
+    state.store.watch(r, "questions", (list) => { state.questions = list; renderQuestions(); renderSplash(); }),
     state.store.watch(r, "profiles", (list) => {
       state.profiles = { a: {}, b: {} };
       for (const x of list) if (x.id === "a" || x.id === "b") state.profiles[x.id] = x;
+      applyColors();
       renderCouple(); renderCalendar(); renderNow(); renderSplash();
       if (!$("#settings").hidden) renderAnnivList();
     }),
@@ -1152,49 +1438,147 @@ function start() {
 
 $$("#tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
 
-function moveMonth(step) {
+function moveMonth(step, slide = true) {
   state.month = new Date(state.month.getFullYear(), state.month.getMonth() + step, 1);
   renderCalendar();
-  animate($("#grid"), step);
+  if (slide) slideIn($("#grid"), step);
 }
 $("#prevMonth").addEventListener("click", () => moveMonth(-1));
 $("#nextMonth").addEventListener("click", () => moveMonth(1));
 
-/* ---------- スワイプ ----------
-   カレンダーの日付の部分を左右にスワイプ → 月を変える
-   それ以外の場所を左右にスワイプ → となりのタブへ */
-const TAB_ORDER = ["calendar", "now", "places", "album", "couple", "settings"];
-function animate(el, step) {
-  el.classList.remove("slide-next", "slide-prev");
-  void el.offsetWidth; // アニメーションをやり直すため
-  el.classList.add(step > 0 ? "slide-next" : "slide-prev");
+/* ---------- スワイプ(指に合わせて画面が動く) ----------
+   カレンダーの日付の部分 → 月を変える
+   それ以外の場所 → となりのタブへ */
+const TAB_ORDER = ["calendar", "now", "album", "couple", "settings"];
+const EASE = "transform .26s cubic-bezier(.2,.8,.2,1)";
+function setX(el, x, animated) {
+  el.style.transition = animated ? EASE : "none";
+  el.style.transform = x ? `translateX(${x}px)` : "";
 }
-let touch = null;
+function after(ms, fn) { setTimeout(fn, ms); }
+// ボタンで月を変えたときの、横からすべり込む動き
+function slideIn(el, step) {
+  const w = el.parentElement.clientWidth;
+  setX(el, step * w * 0.35, false);
+  el.style.opacity = "0.4";
+  void el.offsetWidth; // 位置を確定させてから戻す
+  el.style.transition = EASE + ", opacity .26s";
+  el.style.transform = "";
+  el.style.opacity = "";
+  after(300, () => { el.style.cssText = ""; });
+}
+
+let drag = null;
+function clearPeek() {
+  if (!drag) return;
+  if (drag.peek) { drag.peek.classList.remove("peek", "dragging"); drag.peek.style.cssText = ""; drag.peek.hidden = true; drag.peek = null; }
+}
 document.addEventListener("touchstart", (ev) => {
-  touch = null;
-  if (ev.touches.length !== 1 || document.querySelector("dialog[open]") || !$("#splash").hidden) return;
+  drag = null;
+  if (ev.touches.length !== 1 || !state.device || !TAB_ORDER.includes(currentView)) return;
+  if (document.querySelector("dialog[open]") || !$("#splash").hidden || !$("#story").hidden) return;
   const target = ev.target;
   // 横にスクロールする部分や入力欄では反応させない
   if (target.closest(".countdowns, .chips, input, textarea, select, .tabs")) return;
   const t = ev.touches[0];
-  touch = { x: t.clientX, y: t.clientY, at: Date.now(), inCal: !!target.closest("#grid, .cal-head, .weekdays, .legend") };
+  drag = {
+    x: t.clientX, y: t.clientY, at: Date.now(), dx: 0, lock: null,
+    mode: currentView === "calendar" && target.closest(".grid-wrap, .cal-head, .weekdays, .legend") ? "month" : "tab",
+    w: $("#views").clientWidth, peek: null, dir: 0,
+  };
 }, { passive: true });
-document.addEventListener("touchend", (ev) => {
-  if (!touch || !state.device || !TAB_ORDER.includes(currentView)) return;
-  const t = ev.changedTouches[0];
-  const dx = t.clientX - touch.x;
-  const dy = t.clientY - touch.y;
-  const quick = Date.now() - touch.at < 800;
-  const inCal = touch.inCal;
-  touch = null;
-  if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-  const step = dx < 0 ? 1 : -1; // 左へスワイプ → 次
-  if (inCal && currentView === "calendar") { moveMonth(step); return; }
-  const next = TAB_ORDER[TAB_ORDER.indexOf(currentView) + step];
-  if (!next) return;
-  show(next);
-  animate($("#" + next), step);
+
+document.addEventListener("touchmove", (ev) => {
+  if (!drag) return;
+  const t = ev.touches[0];
+  const dx = t.clientX - drag.x;
+  const dy = t.clientY - drag.y;
+  if (!drag.lock) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+    drag.lock = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+  }
+  if (drag.lock !== "x") return;
+  ev.preventDefault(); // 横に動かしている間は縦にスクロールしない
+  drag.dx = dx;
+  if (drag.mode === "month") {
+    $("#grid").classList.add("dragging");
+    setX($("#grid"), dx, false);
+    return;
+  }
+  const cur = $("#" + currentView);
+  const dir = dx < 0 ? 1 : -1;
+  const name = TAB_ORDER[TAB_ORDER.indexOf(currentView) + dir];
+  if (dir !== drag.dir) {
+    clearPeek();
+    drag.dir = dir;
+    if (name) {
+      const nb = $("#" + name);
+      // となりの画面を、今見えている高さに並べて出す
+      const top = Math.max(0, window.scrollY - $("#views").offsetTop);
+      nb.hidden = false;
+      nb.classList.add("peek", "dragging");
+      nb.style.top = top + "px";
+      drag.peek = nb;
+      if (name === "now") renderNow();
+    }
+  }
+  cur.classList.add("dragging");
+  // 端の先にはもう画面がないので、重く動かす
+  const x = name ? dx : dx * 0.25;
+  setX(cur, x, false);
+  if (drag.peek) setX(drag.peek, x + dir * drag.w, false);
+}, { passive: false });
+
+document.addEventListener("touchend", () => {
+  if (!drag || drag.lock !== "x") { drag = null; return; }
+  const d = drag;
+  const v = d.dx / Math.max(1, Date.now() - d.at); // 速さ(px/ms)
+  const go = Math.abs(d.dx) > d.w * 0.3 || (Math.abs(d.dx) > 40 && Math.abs(v) > 0.45);
+  const dir = d.dx < 0 ? 1 : -1;
+
+  if (d.mode === "month") {
+    const grid = $("#grid");
+    if (!go) { setX(grid, 0, true); after(300, () => { grid.classList.remove("dragging"); grid.style.cssText = ""; }); drag = null; return; }
+    setX(grid, -dir * d.w, true);
+    after(240, () => {
+      moveMonth(dir, false);
+      setX(grid, dir * d.w, false);
+      void grid.offsetWidth; // 位置を確定させてから戻す
+      setX(grid, 0, true);
+      after(300, () => { grid.classList.remove("dragging"); grid.style.cssText = ""; });
+    });
+    drag = null;
+    return;
+  }
+
+  const cur = $("#" + currentView);
+  const nb = d.peek;
+  if (!go || !nb) {
+    setX(cur, 0, true);
+    if (nb) setX(nb, dir * d.w, true);
+    after(280, () => { cur.classList.remove("dragging"); cur.style.cssText = ""; clearPeek(); drag = null; });
+    return;
+  }
+  setX(cur, -dir * d.w, true);
+  setX(nb, 0, true);
+  after(270, () => {
+    const name = nb.id;
+    cur.classList.remove("dragging");
+    cur.style.cssText = "";
+    nb.classList.remove("peek", "dragging");
+    nb.style.cssText = "";
+    drag = null;
+    show(name);
+  });
 }, { passive: true });
+document.addEventListener("touchcancel", () => {
+  if (!drag) return;
+  const cur = currentView && $("#" + currentView);
+  if (cur) { cur.style.cssText = ""; cur.classList.remove("dragging"); }
+  $("#grid").style.cssText = "";
+  clearPeek();
+  drag = null;
+});
 $("#btnAddEvent").addEventListener("click", () => openEvent({ date: state.selected }));
 $("#btnAddPlace").addEventListener("click", () => openPlace());
 $$("#placeSeg button").forEach((b) => b.addEventListener("click", () => { state.filter = b.dataset.filter; renderPlaces(); }));

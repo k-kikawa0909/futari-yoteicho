@@ -13,6 +13,13 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="style.css">
+<script>
+  // 画面の色(端末ごとの設定)を、描画の前に当てておく
+  try {
+    const t = JSON.parse(localStorage.getItem("couple:theme") || "{}");
+    if (t.mode) document.documentElement.dataset.mode = t.mode;
+  } catch (e) {}
+</script>
 </head>
 <body>
 <div id="app">
@@ -21,6 +28,7 @@
     <span id="mode" class="mode"></span>
   </header>
 
+  <div id="views" class="views">
   <!-- はじめての設定 -->
   <section id="setup" class="view" hidden>
     <div class="card">
@@ -45,8 +53,9 @@
     </details>
   </section>
 
-  <!-- カレンダー -->
+  <!-- 予定(カレンダー + 行きたい所) -->
   <section id="calendar" class="view" hidden>
+    <button id="questionNotice" class="notice" hidden></button>
     <div id="countdowns" class="countdowns"></div>
     <div class="cal-head">
       <button id="prevMonth" class="icon" aria-label="前の月">‹</button>
@@ -55,7 +64,7 @@
     </div>
     <div class="legend" id="legend"></div>
     <div class="weekdays"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>
-    <div id="grid" class="grid"></div>
+    <div class="grid-wrap"><div id="grid" class="grid"></div></div>
     <div class="day-panel">
       <div class="day-panel-head">
         <h3 id="dayLabel"></h3>
@@ -63,9 +72,33 @@
       </div>
       <ul id="dayEvents" class="list"></ul>
     </div>
+
+    <!-- 行きたい所 -->
+    <div id="places" class="places-sec">
+      <div class="sec-head">
+        <h2>📍 行きたい所</h2>
+        <button id="btnAddPlace" class="primary small">＋ 追加</button>
+      </div>
+      <div class="places-head">
+        <div class="seg" id="placeSeg">
+          <button data-filter="todo" class="on">行きたい</button>
+          <button data-filter="done">行った</button>
+          <button data-filter="all">ぜんぶ</button>
+        </div>
+        <button id="btnRoulette" class="roulette-btn">🎲 どこ行く?</button>
+      </div>
+      <div class="chips" id="genreChips"></div>
+      <div class="sort-row">
+        <select id="placeSort" aria-label="並べ方">
+          <option value="new">新しい順</option>
+          <option value="want">行きたい度順</option>
+        </select>
+      </div>
+      <ul id="placeList" class="list"></ul>
+    </div>
   </section>
 
-  <!-- いま(今なにしてる?) -->
+  <!-- いま(今なにしてる? + 質問箱) -->
   <section id="now" class="view" hidden>
     <div class="now-cards" id="nowCards"></div>
     <form id="postForm" class="card post-form">
@@ -78,34 +111,37 @@
         <button type="submit" class="primary">送る</button>
       </div>
     </form>
-    <ul id="postList" class="posts"></ul>
-  </section>
 
-  <!-- 行きたい所 -->
-  <section id="places" class="view" hidden>
-    <div class="places-head">
-      <div class="seg" id="placeSeg">
-        <button data-filter="todo" class="on">行きたい</button>
-        <button data-filter="done">行った</button>
-        <button data-filter="all">ぜんぶ</button>
+    <div class="card qbox" id="qbox">
+      <div class="sec-head">
+        <h2>💌 ふたりの質問箱</h2>
+        <button id="btnAsk" class="primary small">質問する</button>
       </div>
-      <button id="btnRoulette" class="roulette-btn">🎲 どこ行く?</button>
+      <div id="qInbox"></div>
+      <div id="qList"></div>
     </div>
-    <div class="chips" id="genreChips"></div>
-    <div class="sort-row">
-      <select id="placeSort" aria-label="並べ方">
-        <option value="new">新しい順</option>
-        <option value="want">行きたい度順</option>
-      </select>
-    </div>
-    <ul id="placeList" class="list"></ul>
-    <button id="btnAddPlace" class="fab" aria-label="行きたい所を追加">＋</button>
+
+    <h3 class="sub-title">タイムライン</h3>
+    <ul id="postList" class="posts"></ul>
   </section>
 
   <!-- 思い出 -->
   <section id="album" class="view" hidden>
-    <p class="muted">「行った」にした場所が、思い出としてここに並びます。写真や感想を残しておこう。</p>
-    <ul id="albumList" class="album"></ul>
+    <div class="seg" id="albumSeg">
+      <button data-tab="albums" class="on">📚 アルバム</button>
+      <button data-tab="visited">📍 行った場所</button>
+    </div>
+    <div id="albumsPane">
+      <div class="sec-head">
+        <p class="muted">二人で写真を入れて残しておけるアルバムです。</p>
+        <button id="btnNewAlbum" class="primary small">＋ アルバム</button>
+      </div>
+      <ul id="albumsList" class="album"></ul>
+    </div>
+    <div id="visitedPane" hidden>
+      <p class="muted">「行った」にした場所が、思い出としてここに並びます。写真や感想を残しておこう。</p>
+      <ul id="albumList" class="album"></ul>
+    </div>
   </section>
 
   <!-- ふたり(プロフィール・相性) -->
@@ -121,13 +157,23 @@
       <label><span class="dot" id="myNameDot"></span><span id="myNameLabel">あなた</span><input id="myNameInput" maxlength="12"></label>
       <p class="muted"><span class="dot" id="partnerNameDot"></span>パートナー: <b id="partnerNameText"></b>(相手の名前は相手だけが変えられます)</p>
       <button id="btnSaveNames" class="primary">保存</button>
+      <p class="muted">自分の色とアイコンは「ふたり」タブの自分のプロフィールの「編集」から変えられます。</p>
+    </div>
+    <div class="card">
+      <h2>画面の色(この端末だけ)</h2>
+      <div class="theme-list" id="themeList"></div>
+      <div class="seg" id="modeSeg">
+        <button data-mode="auto">自動</button>
+        <button data-mode="light">ライト</button>
+        <button data-mode="dark">ダーク</button>
+      </div>
     </div>
     <div class="card">
       <h2>記念日・誕生日</h2>
       <p class="muted">カレンダーの上に「あと○日」が出ます。</p>
       <ul id="annivList" class="list compact"></ul>
       <form id="annivForm" class="anniv-form">
-        <label>名前<input name="title" required maxlength="20" placeholder="例: 付き合った日 / みさきの誕生日"></label>
+        <label>名前<input name="title" required maxlength="20" placeholder="例: 付き合った日"></label>
         <div class="row2">
           <label>日付<input name="date" type="date" required></label>
           <label>数え方
@@ -163,11 +209,11 @@
       <p class="muted">予定やリストは消えません。もう一度コードを入れれば戻れます。</p>
     </div>
   </section>
+  </div>
 
   <nav class="tabs" id="tabs" hidden>
     <button data-view="calendar" class="on"><span>📅</span>予定<i class="badge" data-badge="calendar"></i></button>
     <button data-view="now"><span>💬</span>いま<i class="badge" data-badge="now"></i></button>
-    <button data-view="places"><span>📍</span>行きたい<i class="badge" data-badge="places"></i></button>
     <button data-view="album"><span>📷</span>思い出<i class="badge" data-badge="album"></i></button>
     <button data-view="couple"><span>💞</span>ふたり</button>
     <button data-view="settings"><span>⚙️</span>設定</button>
@@ -223,7 +269,7 @@
   </form>
 </dialog>
 
-<!-- 思い出 -->
+<!-- 思い出(行った場所) -->
 <dialog id="memoryDialog">
   <form method="dialog" id="memoryForm">
     <h2 id="memoryTitle">思い出</h2>
@@ -250,6 +296,21 @@
   </form>
 </dialog>
 
+<!-- 共有アルバム -->
+<dialog id="albumDialog" class="full">
+  <div class="album-top">
+    <button type="button" class="icon ghost" data-close aria-label="閉じる">‹</button>
+    <h2 id="albumTitle"></h2>
+    <button type="button" id="btnAlbumMenu" class="small ghost">⋯</button>
+  </div>
+  <p id="albumInfo" class="muted"></p>
+  <div class="album-actions">
+    <label class="photo-add">＋ 写真を追加<input type="file" id="albumPhotoInput" accept="image/*" multiple hidden></label>
+    <span id="albumMsg" class="muted"></span>
+  </div>
+  <div class="photo-grid big" id="albumGrid"></div>
+</dialog>
+
 <!-- プロフィールの入力 -->
 <dialog id="profileDialog">
   <form method="dialog" id="profileForm">
@@ -258,6 +319,11 @@
       <div id="avatarPreview"></div>
       <label class="photo-add">📷 アイコン写真を選ぶ<input type="file" id="avatarInput" accept="image/*" hidden></label>
     </div>
+    <fieldset class="color-pick">
+      <legend>自分の色(カレンダーの色分けなど)</legend>
+      <div class="swatches" id="colorSwatches"></div>
+      <input type="hidden" name="color">
+    </fieldset>
     <label>誕生日(入れるとカレンダーに自動で入ります)<input name="birthday" type="date"></label>
     <div class="row2">
       <label>血液型<select name="blood" id="pfBlood"></select></label>
@@ -282,11 +348,28 @@
   </form>
 </dialog>
 
+<!-- 質問する -->
+<dialog id="askDialog">
+  <form method="dialog" id="askForm">
+    <h2 id="askTitle">質問する</h2>
+    <textarea name="text" rows="3" maxlength="200" required placeholder="聞いてみたいことを書いてね"></textarea>
+    <p class="muted">お題から選ぶ</p>
+    <div class="chips wrap" id="askIdeas"></div>
+    <div class="actions">
+      <span class="grow"></span>
+      <button type="button" class="ghost" data-close>やめる</button>
+      <button type="submit" class="primary">送る</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- 写真を大きく -->
 <dialog id="photoDialog" class="photo-view">
   <img id="photoBig" alt="">
+  <p id="photoCaption" class="muted"></p>
   <div class="actions">
-    <button type="button" id="btnDeletePhoto" class="danger small">この写真を削除</button>
+    <button type="button" id="btnDeletePhoto" class="danger small">削除</button>
+    <a id="btnSavePhoto" class="btn small" download="photo.jpg">端末に保存</a>
     <span class="grow"></span>
     <button type="button" class="ghost" data-close>閉じる</button>
   </div>
@@ -308,6 +391,17 @@
 </dialog>
 
 <div id="toast" class="toast" hidden></div>
+
+<!-- ストーリー(写真付きの「いま」を全画面で) -->
+<div id="story" class="story" hidden>
+  <div class="story-bars" id="storyBars"></div>
+  <div class="story-head" id="storyHead"></div>
+  <button class="story-close" id="storyClose" aria-label="閉じる">✕</button>
+  <img id="storyImg" alt="">
+  <div class="story-text" id="storyText"></div>
+  <div class="story-tap prev" id="storyPrev"></div>
+  <div class="story-tap next" id="storyNext"></div>
+</div>
 
 <!-- 起動画面: ふたりのアイコンとハート。タップで閉じる -->
 <div id="splash" class="splash" hidden>
