@@ -482,7 +482,7 @@ function renderPlaces() {
   });
   if (!items.length) {
     items.push(h("li", { class: "empty" },
-      state.filter === "done" ? "まだ「行った」場所はありません" : "右下の ＋ から行きたい所を追加しよう"));
+      state.filter === "done" ? "まだ「行った」場所はありません" : "「＋ 追加」から行きたい所を入れてみよう"));
   }
   $("#placeList").replaceChildren(...items);
   renderBadges();
@@ -803,7 +803,10 @@ $("#btnDeletePlace").addEventListener("click", () => {
 
 $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
 // 外側(暗いところ)を押したら閉じる。全画面のアルバムは除く
-$$("dialog:not(.full)").forEach((d) => d.addEventListener("click", (ev) => { if (ev.target === d) d.close(); }));
+$$("dialog:not(.full)").forEach((d) => d.addEventListener("click", (ev) => {
+  if (d.id === "profileDialog" && tutorial.phase === "profile") return; // チュートリアル中は閉じない
+  if (ev.target === d) d.close();
+}));
 
 /* ---------- 設定 ---------- */
 function renderSettings() {
@@ -968,6 +971,7 @@ $("#btnNewPair").addEventListener("click", async () => {
   start();
   show("settings");
   toast("ペアコードを相手に送ってください");
+  setTimeout(maybeStartTutorial, 800);
 });
 
 $("#btnJoin").addEventListener("click", async () => {
@@ -1008,6 +1012,7 @@ $("#btnJoin").addEventListener("click", async () => {
   start();
   show("calendar");
   toast("ペアに参加しました");
+  setTimeout(maybeStartTutorial, 800);
 });
 
 // 機種変更・アプリを消したとき: ペアコード + 復元コードで自分の枠に戻る
@@ -1034,6 +1039,7 @@ $("#btnRecover").addEventListener("click", async () => {
   start();
   show("calendar");
   toast("元のペアに戻りました");
+  setTimeout(maybeStartTutorial, 800);
 });
 
 /* ---------- ふたりのプロフィール・相性 ---------- */
@@ -1150,7 +1156,9 @@ function openProfile(w) {
   pendingAvatar = null;
   showAvatarPreview(p.avatar);
   renderSwatches(p.color || DEFAULT_COLOR[w]);
-  $("#profileTitle").textContent = `${nameOf(w)}のプロフィール`;
+  const first = tutorial.phase === "profile";
+  $("#profileTitle").textContent = first ? "まずはあなたのプロフィール 📝" : `${nameOf(w)}のプロフィール`;
+  $("#profileForm [data-close]").hidden = first; // チュートリアル中は「やめる」を出さない
   $("#profileDialog").showModal();
 }
 
@@ -1199,6 +1207,7 @@ $("#profileForm").addEventListener("submit", (ev) => {
   if (pendingAvatar) data.avatar = pendingAvatar;
   state.store.save(room(), "profiles", me(), data);
   $("#profileDialog").close();
+  if (tutorial.phase === "profile") { tutorial.phase = "tour"; tutorial.i = 0; setTimeout(showCoachStep, 300); return; }
   toast(data.birthday ? "保存しました。誕生日をカレンダーに入れました 🎂" : "保存しました");
 });
 
@@ -1506,7 +1515,7 @@ $("#splash").addEventListener("click", () => {
   // ハートが画面いっぱいに広がって、そのまま今の画面へ
   heartBurst(() => {
     $("#splash").hidden = true;
-    showPendingOverlay();
+    if (!maybeStartTutorial()) showPendingOverlay();
   });
 });
 
@@ -1564,7 +1573,7 @@ function closeOverlay() { $("#overlay").hidden = true; }
 
 // 届いているごめんね・返事を、全画面で知らせる(起動画面の後に)
 function showPendingOverlay() {
-  if (!state.device || splashOpen || !$("#overlay").hidden) return;
+  if (!state.device || splashOpen || !$("#overlay").hidden || tutorial.phase) return;
   const got = sorryToMe().sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0))[0];
   if (got) {
     const answer = (reply) => {
@@ -1619,6 +1628,133 @@ $("#sorryForm").addEventListener("submit", (ev) => {
   $("#sorryDialog").close();
   toast(`${nameOf(partner())}にごめんねを送りました`);
 });
+
+/* ---------- チュートリアル(この版から、端末ごとに1回だけ) ----------
+   1. まず自分のプロフィールを書いてもらう(保存するまで進めない)
+   2. 画面の一部を照らしながら、各タブの使い方を説明する */
+const TUTORIAL_KEY = "couple:tutorial";
+const TUTORIAL_VERSION = "1"; // ここを上げると、全員がもう一度チュートリアルを受ける
+const tutorial = { phase: null, i: 0 };
+function tutorialDone() { try { return localStorage.getItem(TUTORIAL_KEY) === TUTORIAL_VERSION; } catch { return true; } }
+function finishTutorial(burst) {
+  try { localStorage.setItem(TUTORIAL_KEY, TUTORIAL_VERSION); } catch {}
+  tutorial.phase = null;
+  $("#coach").hidden = true;
+  show("calendar");
+  if (burst) heartBurst(() => toast("たのしんでね 💞"));
+  setTimeout(showPendingOverlay, burst ? 1700 : 300);
+}
+
+// 起動画面のあと・ペアに入った直後に呼ぶ。始めたら true
+function maybeStartTutorial() {
+  if (!state.device || tutorial.phase || tutorialDone() || splashOpen) return false;
+  tutorial.phase = "welcome";
+  showWelcome();
+  return true;
+}
+
+function coachSkipButton() {
+  return h("button", { type: "button", class: "ghost small", onclick: () => {
+    if (confirm("使い方の説明をスキップしますか?(もう表示されません)")) finishTutorial(false);
+  } }, "スキップ");
+}
+
+function showWelcome() {
+  $("#coach").hidden = false;
+  $("#coachHole").className = "coach-hole none";
+  const b = $("#coachBubble");
+  b.style.top = "22%";
+  b.replaceChildren(h("div", { class: "coach-welcome" },
+    h("div", { class: "overlay-emoji" }, "💞"),
+    h("div", { class: "coach-title" }, `ようこそ、${nameOf(me())}さん!`),
+    h("div", { class: "coach-text" }, "ふたりの予定帳へようこそ。\nまずは、あなたのプロフィールを書いてね。\nアイコン写真・自分の色・誕生日などを入れると、相手にも見えるようになります。"),
+    h("div", { class: "actions" },
+      h("span", { class: "grow" }),
+      h("button", { type: "button", class: "primary", onclick: () => {
+        tutorial.phase = "profile";
+        $("#coach").hidden = true;
+        show("couple");
+        openProfile(me());
+      } }, "プロフィールを書く"))));
+}
+
+// 説明の順番。view: 開くタブ / target: 照らす場所 / when: 出す条件
+const COACH_STEPS = [
+  { view: "settings", target: () => $("#pairCode").closest(".code-box"), when: () => !(state.members && state.members[partner()]),
+    title: "📮 まずは相手を招待", text: "このペアコードを LINE などで相手に送ってね。\n相手がアプリでコードを入れると、二人の予定帳がつながります。" },
+  { view: "calendar", target: () => $("#grid"), title: "📅 カレンダー",
+    text: "日付をタップすると、その日の予定が見られます。\n点の色は「だれの予定か」(自分・相手・ふたり)です。\n左右にスワイプすると月が変わります。" },
+  { view: "calendar", target: () => $("#btnAddEvent"), title: "＋ 予定を追加",
+    text: "ここから予定を入れられます。\n旅行など何日か続く予定は「終わりの日」も入れてね。" },
+  { view: "calendar", target: () => $("#places .sec-head"), title: "📍 行きたい所",
+    text: "カレンダーの下は「行きたい所リスト」。\n♡ で「私も行きたい」、「🎲 どこ行く?」で行き先をルーレットで決められます。\n✓ を押すと「行った場所」として思い出に残ります。" },
+  { view: "now", target: () => $("#postForm"), title: "💬 いま",
+    text: "「いま何してる?」を写真や文字で送れます。\n写真を送ると24時間だけアイコンに輪が付いて、ストーリーのように見られます。" },
+  { view: "now", target: () => $("#qbox"), title: "💌 ふたりの質問箱",
+    text: "相手に聞いてみたいことを質問できます。\n質問が届くと、お知らせが出ます。" },
+  { view: "now", target: () => $(".sorry-card"), title: "🙏 ごめんねボタン",
+    text: "ケンカしちゃったときは、ここからごめんねを送れます。\n相手は「いいよ 💗」で返事できます。" },
+  { view: "album", target: () => $("#albumSeg"), title: "📷 思い出",
+    text: "二人で写真を入れられる「アルバム」と、\n「行った場所」の写真や感想がここに並びます。" },
+  { view: "couple", target: () => $("#compat"), title: "💞 ふたり",
+    text: "二人のプロフィールと相性診断です。\n相手のプロフィールが入ると、相性や「ふたりのトリセツ」が見られます。" },
+  { view: "settings", target: () => $("#recoveryCode").closest(".code-box"), title: "🔑 復元コード(大事!)",
+    text: "機種変更やアプリを消したときに、元に戻るためのコードです。\nスクショやメモで、あなただけが見られる所に保存しておいてね。" },
+  { view: "settings", target: () => $("#themeList").closest(".card"), title: "🎨 設定",
+    text: "画面の色・記念日・ゴミ箱などはここから。\n削除したものは3日間、ゴミ箱から戻せます。" },
+  { view: null, target: null, title: "準備完了!",
+    text: "下のボタンか、画面を左右にスワイプしてタブを移動できます。\nふたりの予定帳、たのしんでね 💞" },
+];
+const activeSteps = () => COACH_STEPS.filter((s) => !s.when || s.when());
+
+function showCoachStep() {
+  const steps = activeSteps();
+  const s = steps[tutorial.i];
+  if (!s) { finishTutorial(true); return; }
+  $("#coach").hidden = false;
+  if (s.view) show(s.view);
+  const el = s.target && s.target();
+  // 照らす所を画面の上のほうに出して、下に吹き出しの場所を空ける
+  if (el) window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.scrollY - 90));
+  // スクロールが終わってから照らす位置を決める
+  setTimeout(() => placeCoach(el, s, steps), 250);
+}
+
+function placeCoach(el, s, steps) {
+  const hole = $("#coachHole");
+  const b = $("#coachBubble");
+  const last = tutorial.i === steps.length - 1;
+  b.replaceChildren(
+    h("div", { class: "coach-step" }, `使い方 ${tutorial.i + 1} / ${steps.length}`),
+    h("div", { class: "coach-title" }, s.title),
+    h("div", { class: "coach-text" }, s.text),
+    h("div", { class: "coach-dots" }, ...steps.map((_, k) => h("i", { class: k === tutorial.i ? "on" : "" }))),
+    h("div", { class: "actions" },
+      last ? null : coachSkipButton(),
+      h("span", { class: "grow" }),
+      tutorial.i > 0 ? h("button", { type: "button", class: "small", onclick: () => { tutorial.i--; showCoachStep(); } }, "戻る") : null,
+      h("button", { type: "button", class: "primary", onclick: () => { tutorial.i++; showCoachStep(); } }, last ? "はじめる 💞" : "次へ")));
+  if (!el) {
+    hole.className = "coach-hole none";
+    b.style.top = "28%";
+    return;
+  }
+  const r = el.getBoundingClientRect();
+  const pad = 6;
+  hole.className = "coach-hole";
+  Object.assign(hole.style, { left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + pad * 2}px`, height: `${r.height + pad * 2}px` });
+  // 吹き出しは、照らした所の下 → 入らなければ上 → それも無理なら画面の下のほうに出す
+  const bh = b.offsetHeight || 200;
+  const bottomLimit = innerHeight - 80;
+  let top;
+  if (r.bottom + 14 + bh <= bottomLimit) top = r.bottom + 14;
+  else if (r.top - 14 - bh >= 12) top = r.top - 14 - bh;
+  else top = Math.max(12, bottomLimit - bh);
+  b.style.top = `${top}px`;
+}
+addEventListener("resize", () => { if (tutorial.phase === "tour") showCoachStep(); });
+// プロフィールはチュートリアル中は閉じられない
+$("#profileDialog").addEventListener("cancel", (ev) => { if (tutorial.phase === "profile") ev.preventDefault(); });
 
 /* ---------- 起動 ---------- */
 function rerender() {
@@ -1702,7 +1838,7 @@ function clearPeek() {
 document.addEventListener("touchstart", (ev) => {
   drag = null;
   if (ev.touches.length !== 1 || !state.device || !TAB_ORDER.includes(currentView)) return;
-  if (document.querySelector("dialog[open]") || !$("#splash").hidden || !$("#story").hidden || !$("#overlay").hidden) return;
+  if (document.querySelector("dialog[open]") || !$("#splash").hidden || !$("#story").hidden || !$("#overlay").hidden || !$("#coach").hidden) return;
   const target = ev.target;
   // 横にスクロールする部分や入力欄では反応させない
   if (target.closest(".countdowns, .chips, input, textarea, select, .tabs")) return;

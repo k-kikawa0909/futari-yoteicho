@@ -502,6 +502,28 @@ body { overflow-x: hidden; }
 .overlay-btns button { width: 100%; padding: 12px; }
 .overlay-btns .love { background: var(--love); border-color: var(--love); color: #fff; font-weight: 700; }
 
+/* チュートリアル(画面の一部を照らして吹き出しで説明) */
+.coach { position: fixed; inset: 0; z-index: 75; }
+.coach-hole {
+  position: fixed; border-radius: 14px; pointer-events: none;
+  box-shadow: 0 0 0 4px rgba(255,255,255,.9), 0 0 0 9999px rgba(20, 12, 16, .62);
+}
+.coach-hole.none { box-shadow: 0 0 0 9999px rgba(20, 12, 16, .62); width: 0 !important; height: 0 !important; left: 50% !important; top: 40% !important; }
+.coach-bubble {
+  position: fixed; left: 16px; right: 16px; max-width: 420px; margin: 0 auto;
+  background: var(--card); color: var(--text); border-radius: 18px; padding: 16px 16px 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.3);
+}
+.coach-step { font-size: 12px; color: var(--muted); }
+.coach-title { font-size: 17px; font-weight: 700; margin: 2px 0 6px; }
+.coach-text { font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
+.coach-dots { display: flex; gap: 4px; margin: 10px 0 0; }
+.coach-dots i { width: 6px; height: 6px; border-radius: 99px; background: var(--line); }
+.coach-dots i.on { background: var(--love); width: 16px; }
+.coach .actions { margin-top: 10px; }
+.coach-welcome { text-align: center; }
+.coach-welcome .overlay-emoji { margin-bottom: 4px; }
+
 /* 元に戻すボタン付きのお知らせ */
 .toast { display: flex; align-items: center; gap: 12px; }
 .toast button { background: none; border: 0; color: var(--love); font-weight: 700; padding: 0; font-size: 14px; }
