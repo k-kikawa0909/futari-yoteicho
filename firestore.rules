@@ -33,7 +33,19 @@ service cloud.firestore {
         || claimEmpty(r, 'a') || claimEmpty(r, 'b')
         // 復元コードで自分の枠に戻る
         || reclaim(r, 'a') || reclaim(r, 'b')
+        // 相手の端末の登録を外す(相手がアプリを入れ直したときなど。データは消えない)
+        || (isMember(r) && removeOther(r))
       );
+
+      function removeOther(r) {
+        let before = resource.data.get('members', {});
+        let after = request.resource.data.get('members', {});
+        let other = myRole(r) == 'a' ? 'b' : 'a';
+        return before.keys().hasAny([other])
+          && !after.keys().hasAny([other])
+          && after.diff(before).affectedKeys().hasOnly([other])
+          && changed().hasOnly(['members', 'updatedAt']);
+      }
 
       function claimEmpty(r, slot) {
         let before = resource.data.get('members', {});

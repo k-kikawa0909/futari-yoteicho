@@ -158,6 +158,7 @@ const state = {
   questions: [],
   trash: {}, // ゴミ箱に入っているもの(種類ごと)
   apologies: [], // ごめんね
+  members: {}, // 登録されている端末(a: 招待した側, b: 参加した側)
   posts: [],
   profiles: { a: {}, b: {} },
   month: (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
@@ -813,6 +814,11 @@ function renderSettings() {
   $("#partnerNameText").textContent = state.names[partner()] || "(まだ参加していません)";
   $("#partnerNameDot").className = `dot ${partner()}`;
   $("#pairCode").textContent = room();
+  const reg = !!(state.members && state.members[partner()]);
+  $("#partnerReg").textContent = reg
+    ? `パートナーの端末: 登録済み(${nameOf(partner())})`
+    : "パートナーの端末: まだ登録されていません(ペアコードで参加してもらってください)";
+  $("#btnResetPartner").hidden = !reg || !state.store.shared;
   $("#recoveryCode").textContent = state.device.recovery || "(まだありません)";
   renderThemeSettings();
   renderAnnivList();
@@ -878,6 +884,20 @@ $("#btnNewRecovery").addEventListener("click", async () => {
   }
 });
 
+// 相手の端末の登録を外す(相手がアプリを入れ直したときなど)。データはそのまま
+$("#btnResetPartner").addEventListener("click", async () => {
+  const p = nameOf(partner());
+  if (!confirm(`${p}の端末の登録を外しますか?\n\n${p}は、もう一度ペアコードで参加できるようになります。予定や写真などのデータは消えません。`)) return;
+  if (!confirm(`本当に外しますか?\n(${p}が今使っている端末は、参加し直すまで編集できなくなります)`)) return;
+  try {
+    await state.store.clearMember(room(), partner());
+    toast(`${p}の登録を外しました。ペアコードで参加し直してもらってください`);
+  } catch (e) {
+    console.error(e);
+    toast("できませんでした。電波を確かめてください");
+  }
+});
+
 $("#btnLeave").addEventListener("click", () => {
   if (!confirm("この端末のペア設定をやめますか?\n(ペアコードと復元コードがあれば、あとで戻れます)")) return;
   state.unsub.forEach((u) => u());
@@ -910,9 +930,17 @@ async function ensureMembership() {
   const data = await state.store.getRoom(room());
   if (!data) return "missing";
   const members = data.members || {};
-  if (members[me()] === state.store.uid) return "ok";
+  if (members[me()] === state.store.uid) {
+    if (!state.device.registered) { state.device.registered = true; saveDevice(state.device); }
+    return "ok";
+  }
   if (members[me()]) return "taken"; // 別の端末が登録済み → 復元コードが必要
+  // 一度登録した端末の枠が空いている = 相手が「登録をやり直す」を押した → 自動では入らない
+  if (state.device.registered) return "removed";
+  // 以前の版から使っている端末は、ここで初めて登録する
   await state.store.saveRoom(room(), { members: { [me()]: state.store.uid } });
+  state.device.registered = true;
+  saveDevice(state.device);
   if (!state.device.recovery) await makeRecovery().catch((e) => console.error(e));
   return "ok";
 }
@@ -929,7 +957,7 @@ $("#btnNewPair").addEventListener("click", async () => {
   const code = newCode();
   try {
     await state.store.saveRoom(code, { names: { a: name }, members: { a: state.store.uid } });
-    state.device = { room: code, me: "a", lastSeen: Date.now() };
+    state.device = { room: code, me: "a", lastSeen: Date.now(), registered: true };
     await makeRecovery();
   } catch (e) {
     console.error(e);
@@ -957,13 +985,19 @@ $("#btnJoin").addEventListener("click", async () => {
     return;
   }
   if (!data) { $("#setupMsg").textContent = "そのペアコードは見つかりませんでした。もう一度確かめてください。"; return; }
-  if (data.members && data.members.b && data.members.b !== state.store.uid) {
-    $("#setupMsg").textContent = "このペアにはもう二人が参加しています。自分の端末を入れ替えたときは、下の「復元コードで戻る」を使ってください。";
+  // 空いている枠に入る(ふつうは「参加した側 b」。相手が登録をやり直した場合は空いた方)
+  const members = data.members || {};
+  const already = ["a", "b"].find((s) => members[s] === state.store.uid); // この端末がすでに登録済み
+  const slot = already || (!members.b ? "b" : !members.a ? "a" : null);
+  if (!slot) {
+    $("#setupMsg").textContent = "このペアには、もう二人分の端末が登録されています。"
+      + "相手の設定画面の「パートナーの登録をやり直す」を押してもらってから、もう一度参加してください。"
+      + "(この端末で以前参加していた人は、下の「復元コードで戻る」も使えます)";
     return;
   }
   try {
-    await state.store.saveRoom(code, { names: { b: name }, members: { b: state.store.uid } });
-    state.device = { room: code, me: "b", lastSeen: Date.now() };
+    await state.store.saveRoom(code, { names: { [slot]: name }, members: { [slot]: state.store.uid } });
+    state.device = { room: code, me: slot, lastSeen: Date.now(), registered: true };
     await makeRecovery();
   } catch (e) {
     console.error(e);
@@ -995,7 +1029,7 @@ $("#btnRecover").addEventListener("click", async () => {
     $("#recoverMsg").textContent = "戻れませんでした。ペアコードと復元コードを確かめてください。";
     return;
   }
-  state.device = { room: code, me: role, lastSeen: Date.now(), recovery: `${role.toUpperCase()}-${key.match(/.{4}/g).join("-")}` };
+  state.device = { room: code, me: role, lastSeen: Date.now(), registered: true, recovery: `${role.toUpperCase()}-${key.match(/.{4}/g).join("-")}` };
   saveDevice(state.device);
   start();
   show("calendar");
@@ -1604,7 +1638,7 @@ function start() {
   if (!state.device.lastSeen) { state.device.lastSeen = Date.now(); saveDevice(state.device); }
   const r = room();
   state.unsub = [
-    state.store.watchRoom(r, (x) => { state.names = { a: "", b: "", ...(x.names || {}) }; rerender(); }),
+    state.store.watchRoom(r, (x) => { state.names = { a: "", b: "", ...(x.names || {}) }; state.members = x.members || {}; rerender(); }),
     state.store.watch(r, "places", (list) => {
       state.places = splitTrash("places", list);
       renderPlaces(); renderCalendar(); renderAlbum();
@@ -1801,9 +1835,12 @@ $("#placeSort").addEventListener("change", (ev) => { state.sort = ev.target.valu
     } else {
       $("#recoverPair").value = state.device.room;
       if (state.device.recovery) $("#recoverCode").value = state.device.recovery;
+      if (status === "removed") $("#setupCode").value = state.device.room;
       showSetupMessage(status === "taken"
         ? "この端末は、ペアにまだ登録されていません。下の「復元コードで戻る」に復元コードを入れてください。"
-        : "ペアが見つかりませんでした。もう一度ペアを作るか、参加してください。");
+        : status === "removed"
+          ? "この端末の登録は、パートナーによって外されました。使い続けるときは、名前を入れて「コードで参加する」を押してください。"
+          : "ペアが見つかりませんでした。もう一度ペアを作るか、参加してください。");
       state.device = null;
       saveDevice(null);
     }

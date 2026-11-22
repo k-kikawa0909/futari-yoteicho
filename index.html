@@ -34,6 +34,7 @@
     <div class="card">
       <h2>はじめに</h2>
       <p class="muted">二人で同じ「ペアコード」を使うと、予定とリストが共有されます。</p>
+      <p class="muted">📱 <b>iPhone の人へ:</b> 先に「ホーム画面に追加」をして、ホーム画面のアイコンから開いて始めてください。Safari で始めると、ホーム画面のアプリとは別の端末あつかいになります。</p>
       <label>あなたの名前<input id="setupName" maxlength="12" placeholder="例: けんた"></label>
       <div class="split">
         <button id="btnNewPair" class="primary">新しく始める</button>
@@ -203,6 +204,10 @@
       <p class="muted">相手の端末でこのコードを入れると、同じ予定帳を見られます。他の人には教えないでください。</p>
       <div class="code-box"><code id="pairCode"></code><button id="btnCopyCode" class="small">コピー</button></div>
       <p id="copyMsg" class="muted"></p>
+      <hr>
+      <p class="muted" id="partnerReg"></p>
+      <button id="btnResetPartner" class="small ghost">パートナーの登録をやり直す</button>
+      <p class="muted">相手が「もう二人が登録されています」と出て参加できないとき(アプリを入れ直した・iPhone で Safari とホーム画面のアプリで別々に開いた など)に押してください。相手はもう一度ペアコードで参加できます。予定や写真などのデータは消えません。</p>
     </div>
     <div class="card">
       <h2>復元コード(あなた専用)</h2>

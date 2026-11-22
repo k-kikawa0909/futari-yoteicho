@@ -58,6 +58,15 @@ function createLocalStore() {
       });
       emit(k);
     },
+    // 枠(招待した側 a / 参加した側 b)の登録を外す
+    async clearMember(room, slot) {
+      const k = key(room, "room");
+      const cur = read(k);
+      const members = { ...(cur.members || {}) };
+      delete members[slot];
+      write(k, { ...cur, members });
+      emit(k);
+    },
     watch(room, kind, cb, opts) {
       const pick = newest(opts);
       return on(key(room, kind), (map) => cb(pick(Object.entries(map).map(([id, v]) => ({ id, ...v })))));
@@ -119,6 +128,10 @@ async function createFirebaseStore() {
     },
     async saveRoom(room, data) {
       await fs.setDoc(roomDoc(room), { ...data, updatedAt: fs.serverTimestamp() }, { merge: true });
+    },
+    // 枠(招待した側 a / 参加した側 b)の登録を外す
+    async clearMember(room, slot) {
+      await fs.updateDoc(roomDoc(room), { ["members." + slot]: fs.deleteField(), updatedAt: fs.serverTimestamp() });
     },
     watch(room, kind, cb, opts) {
       const q = opts && opts.limit
