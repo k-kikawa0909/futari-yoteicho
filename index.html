@@ -85,6 +85,12 @@
     <ul id="albumList" class="album"></ul>
   </section>
 
+  <!-- ふたり(プロフィール・相性) -->
+  <section id="couple" class="view" hidden>
+    <div class="profiles" id="profiles"></div>
+    <div class="card" id="compat"></div>
+  </section>
+
   <!-- 設定 -->
   <section id="settings" class="view" hidden>
     <div class="card">
@@ -135,6 +141,7 @@
     <button data-view="calendar" class="on"><span>📅</span>カレンダー<i class="badge" data-badge="calendar"></i></button>
     <button data-view="places"><span>📍</span>行きたい所<i class="badge" data-badge="places"></i></button>
     <button data-view="album"><span>📷</span>思い出<i class="badge" data-badge="album"></i></button>
+    <button data-view="couple"><span>💞</span>ふたり</button>
     <button data-view="settings"><span>⚙️</span>設定</button>
   </nav>
 </div>
@@ -210,6 +217,34 @@
     <div class="actions">
       <span class="grow"></span>
       <button type="button" class="ghost" data-close>閉じる</button>
+      <button type="submit" class="primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- プロフィールの入力 -->
+<dialog id="profileDialog">
+  <form method="dialog" id="profileForm">
+    <h2 id="profileTitle">プロフィール</h2>
+    <label>誕生日(入れるとカレンダーに自動で入ります)<input name="birthday" type="date"></label>
+    <div class="row2">
+      <label>血液型<select name="blood" id="pfBlood"></select></label>
+      <label>MBTI<select name="mbti" id="pfMbti"></select></label>
+    </div>
+    <fieldset class="love">
+      <legend>ラブタイプ(診断結果の4文字)</legend>
+      <div class="love-grid" id="pfLove"></div>
+      <label>タイプ名<input name="loveName" maxlength="20" placeholder="例: 診断結果に出たタイプ名"></label>
+    </fieldset>
+    <label>趣味・好きなこと<input name="hobby" maxlength="60"></label>
+    <label>好きな食べ物<input name="food" maxlength="60"></label>
+    <label>されたら嬉しいこと<textarea name="happy" rows="2" maxlength="200" placeholder="例: 「ありがとう」を言ってもらえる"></textarea></label>
+    <label>苦手なこと・されたくないこと<textarea name="ng" rows="2" maxlength="200" placeholder="例: 返事がないまま予定を決められる"></textarea></label>
+    <label>メモ<textarea name="memo" rows="2" maxlength="200" placeholder="例: 服のサイズ、アレルギー など"></textarea></label>
+    <input type="hidden" name="who">
+    <div class="actions">
+      <span class="grow"></span>
+      <button type="button" class="ghost" data-close>やめる</button>
       <button type="submit" class="primary">保存</button>
     </div>
   </form>

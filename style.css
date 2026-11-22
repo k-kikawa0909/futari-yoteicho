@@ -271,6 +271,35 @@ fieldset.who input { width: auto; margin: 0 6px 0 0; display: inline-block; }
 dialog.photo-view { padding: 10px; }
 .photo-view img { width: 100%; max-height: 70vh; object-fit: contain; border-radius: 10px; display: block; }
 
+/* ふたり(プロフィール・相性) */
+.profile { border-top: 4px solid var(--both); }
+.profile.a { border-top-color: var(--a); }
+.profile.b { border-top-color: var(--b); }
+.profile-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.profile-head b { font-size: 17px; }
+.profile-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; margin: 6px 0 0; font-size: 14px; }
+.profile-list dt { color: var(--muted); white-space: nowrap; }
+.profile-list dd { margin: 0; word-break: break-word; }
+fieldset.love { border: 1px solid var(--line); border-radius: 10px; margin: 12px 0 0; padding: 6px 10px 2px; }
+fieldset.love legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
+.love-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.love-grid select { margin: 0; font-size: 14px; padding: 8px; }
+.total { text-align: center; padding: 8px 0 14px; }
+.total-n { font-size: 16px; color: var(--muted); }
+.total-n b { font-size: 48px; color: var(--accent); margin-right: 2px; }
+.total-h { color: var(--accent); font-size: 22px; letter-spacing: 3px; }
+.total-m { margin-top: 6px; font-weight: 600; }
+.compat-sec { border-top: 1px solid var(--line); padding: 12px 0 4px; }
+.compat-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; font-size: 14px; }
+.compat-title b { color: var(--accent); }
+.bar { height: 6px; background: var(--line); border-radius: 99px; margin: 6px 0 8px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--a), var(--b)); border-radius: 99px; }
+.compat-sec ul { margin: 4px 0 6px; padding-left: 1.2em; font-size: 14px; line-height: 1.6; }
+.compat-good > b, .compat-care > b { font-size: 13px; }
+.compat-care > b { color: #d08a1f; }
+.torisetsu ul { list-style: "💗 "; }
+.small-note { font-size: 11px; margin-top: 12px; }
+
 /* スワイプの動き */
 @keyframes slideNext { from { transform: translateX(36px); opacity: .3; } to { transform: none; opacity: 1; } }
 @keyframes slidePrev { from { transform: translateX(-36px); opacity: .3; } to { transform: none; opacity: 1; } }

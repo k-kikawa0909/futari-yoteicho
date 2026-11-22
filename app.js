@@ -1,4 +1,5 @@
 import { createStore } from "./store.js";
+import { BLOOD, MBTI, MBTI_NICK, LOVE_AXES, zodiac, diagnose, loveCode, totalMessage } from "./compat.js";
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -70,6 +71,7 @@ const state = {
   events: [],
   anniv: [],
   photos: [],
+  profiles: { a: {}, b: {} },
   month: (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
   selected: today,
   filter: "todo",
@@ -145,7 +147,7 @@ function nextYearly(dateStr) {
 const MILESTONES = [100, 200, 300, 365, 500, 700, 730, 1000, 1095, 1500, 2000, 3000];
 function renderCountdowns() {
   const cards = [];
-  for (const a of state.anniv.filter((x) => x.kind === "since" && x.date <= today)) {
+  for (const a of allAnniv().filter((x) => x.kind === "since" && x.date <= today)) {
     const n = daysBetween(a.date, today) + 1;
     const next = MILESTONES.find((m) => m > n) || Math.ceil((n + 1) / 1000) * 1000;
     const isMilestone = MILESTONES.includes(n);
@@ -155,7 +157,7 @@ function renderCountdowns() {
       h("div", { class: "cd-s" }, isMilestone ? `🎉 今日は${n}日記念!` : `${next}日記念まで あと${next - n}日`)
     ));
   }
-  const yearly = state.anniv
+  const yearly = allAnniv()
     .filter((x) => x.kind === "yearly")
     .map((a) => ({ a, left: daysBetween(today, nextYearly(a.date)) }))
     .sort((x, y) => x.left - y.left);
@@ -197,7 +199,7 @@ function eventsByDate() {
   return map;
 }
 function annivOnDate(key) {
-  return state.anniv.filter((a) => a.date && a.date.slice(5) === key.slice(5) && a.date <= key);
+  return allAnniv().filter((a) => a.date && a.date.slice(5) === key.slice(5) && a.date <= key);
 }
 
 function selectDay(key) {
@@ -269,7 +271,7 @@ function renderDay() {
   const evs = (eventsByDate()[state.selected] || []).slice().sort(byTime);
   const items = annivs.map((a) => {
     const years = parseYmd(state.selected).getFullYear() - parseYmd(a.date).getFullYear();
-    const label = a.kind === "since" ? (years > 0 ? `${a.title}から${years}年 🎉` : `${a.title} 💗`) : `${a.title} 🎂`;
+    const label = a.kind === "since" ? (years > 0 ? `${a.title}から${years}年 🎉` : `${a.title} 💗`) : a.auto && years > 0 ? `${a.title}(${years}歳)🎂` : `${a.title} 🎂`;
     return h("li", { class: "item anniv" }, h("div", { class: "body" }, h("div", { class: "t" }, label)));
   });
   items.push(...evs.map((e) => eventItem(e, false)));
@@ -654,15 +656,17 @@ function renderSettings() {
 }
 
 function renderAnnivList() {
-  const items = state.anniv.slice().sort((x, y) => (x.date || "").localeCompare(y.date || "")).map((a) =>
+  const items = allAnniv().sort((x, y) => (x.date || "").localeCompare(y.date || "")).map((a) =>
     h("li", { class: "item anniv" },
       h("div", { class: "body" },
         h("div", { class: "t" }, (a.kind === "since" ? "💑 " : "🎂 ") + a.title),
-        h("div", { class: "s" }, `${dayLabel(a.date)} · ${a.kind === "since" ? "この日から○日目" : "毎年の記念日"}`)),
-      h("button", { class: "small ghost", onclick: () => {
-        if (!confirm(`「${a.title}」を削除しますか?`)) return;
-        state.store.remove(room(), "anniv", a.id);
-      } }, "削除")));
+        h("div", { class: "s" }, `${a.kind === "yearly" ? `毎年 ${Number(a.date.slice(5, 7))}月${Number(a.date.slice(8))}日` : dayLabel(a.date)} · ${a.auto ? "プロフィールの誕生日から自動" : a.kind === "since" ? "この日から○日目" : "毎年の記念日"}`)),
+      a.auto
+        ? h("button", { class: "small ghost", onclick: () => { show("couple"); openProfile(a.who); } }, "変更")
+        : h("button", { class: "small ghost", onclick: () => {
+          if (!confirm(`「${a.title}」を削除しますか?`)) return;
+          state.store.remove(room(), "anniv", a.id);
+        } }, "削除")));
   if (!items.length) items.push(h("li", { class: "empty" }, "まだありません。付き合った日や誕生日を入れてみよう"));
   $("#annivList").replaceChildren(...items);
 }
@@ -740,11 +744,122 @@ $("#btnJoin").addEventListener("click", async () => {
   toast("ペアに参加しました");
 });
 
+/* ---------- ふたりのプロフィール・相性 ---------- */
+// プロフィールの誕生日は、自動で「毎年の記念日」としてカレンダーに入る
+function allAnniv() {
+  const auto = ["a", "b"].filter((w) => state.profiles[w].birthday).map((w) => ({
+    id: "pf-" + w, who: w, auto: true, kind: "yearly",
+    title: `${nameOf(w)}の誕生日`, date: state.profiles[w].birthday,
+  }));
+  return [...auto, ...state.anniv];
+}
+
+function ageOf(birthday) {
+  if (!birthday) return null;
+  const b = parseYmd(birthday), t = parseYmd(today);
+  let age = t.getFullYear() - b.getFullYear();
+  if (t.getMonth() < b.getMonth() || (t.getMonth() === b.getMonth() && t.getDate() < b.getDate())) age--;
+  return age >= 0 ? age : null;
+}
+
+function profileCard(w) {
+  const p = state.profiles[w];
+  const z = zodiac(p.birthday);
+  const age = ageOf(p.birthday);
+  const love = loveCode(p);
+  const rows = [
+    ["🎂 誕生日", p.birthday ? `${parseYmd(p.birthday).getFullYear()}年${dayLabel(p.birthday).replace(/\(.\)/, "")}${age != null ? `(${age}歳)` : ""}` : ""],
+    ["⭐ 星座", z ? z.name : ""],
+    ["🩸 血液型", p.blood ? `${p.blood}型` : ""],
+    ["🧠 MBTI", p.mbti ? `${p.mbti}(${MBTI_NICK[p.mbti] || ""})` : ""],
+    ["💘 ラブタイプ", [love, p.loveName].filter(Boolean).join(" ")],
+    ["🎮 趣味", p.hobby], ["🍽️ 好きな食べ物", p.food],
+    ["😊 嬉しいこと", p.happy], ["⚠️ 苦手なこと", p.ng], ["📝 メモ", p.memo],
+  ].filter(([, v]) => v);
+  return h("div", { class: `card profile ${w}` },
+    h("div", { class: "profile-head" },
+      h("span", { class: `dot ${w}` }), h("b", {}, nameOf(w)), w === me() ? h("span", { class: "muted" }, "(あなた)") : null,
+      h("span", { class: "grow" }),
+      h("button", { class: "small", onclick: () => openProfile(w) }, "編集")),
+    rows.length
+      ? h("dl", { class: "profile-list" }, ...rows.flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))
+      : h("p", { class: "muted" }, "まだ入力されていません。「編集」から入れてね"));
+}
+
+function renderCouple() {
+  if (!state.device) return;
+  $("#profiles").replaceChildren(profileCard(me()), profileCard(partner()));
+  const { total, sections } = diagnose(state.profiles.a, state.profiles.b);
+  const box = $("#compat");
+  if (total == null) {
+    box.replaceChildren(
+      h("h2", {}, "💞 ふたりの相性診断"),
+      h("p", { class: "muted" }, "二人とも、誕生日・血液型・MBTI・ラブタイプのどれかを入れると相性診断ができます。"),
+      ...[torisetsu()].filter(Boolean));
+    return;
+  }
+  const hearts = Math.round(total / 20);
+  box.replaceChildren(
+    h("h2", {}, "💞 ふたりの相性診断"),
+    h("div", { class: "total" },
+      h("div", { class: "total-n" }, h("b", {}, total), "%"),
+      h("div", { class: "total-h" }, "♥".repeat(hearts) + "♡".repeat(5 - hearts)),
+      h("div", { class: "total-m" }, totalMessage(total))),
+    ...sections.map((s) => h("div", { class: "compat-sec" },
+      h("div", { class: "compat-title" }, h("span", {}, s.title), h("b", {}, `${s.score}%`)),
+      h("div", { class: "bar" }, h("i", { style: `width:${s.score}%` })),
+      s.good.length ? h("div", { class: "compat-good" }, h("b", {}, "👍 いいところ"), h("ul", {}, ...s.good.map((x) => h("li", {}, x)))) : null,
+      s.care.length ? h("div", { class: "compat-care" }, h("b", {}, "💡 気を付けたいこと"), h("ul", {}, ...s.care.map((x) => h("li", {}, x)))) : null)),
+    ...[torisetsu()].filter(Boolean),
+    h("p", { class: "muted small-note" }, "※ 血液型・星座・MBTI・ラブタイプの相性は、科学的な根拠がはっきりしない「お楽しみ」です。いちばん大事なのは、二人で話し合うこと。"));
+}
+
+// 「ふたりのトリセツ」: プロフィールに書いた嬉しいこと・苦手なことをまとめる
+function torisetsu() {
+  const lines = [];
+  for (const w of [partner(), me()]) {
+    const p = state.profiles[w];
+    if (p.happy) lines.push(h("li", {}, `${nameOf(w)}は「${p.happy}」が嬉しい`));
+    if (p.ng) lines.push(h("li", {}, `${nameOf(w)}は「${p.ng}」が苦手`));
+    if (p.food) lines.push(h("li", {}, `${nameOf(w)}の好きな食べ物は「${p.food}」`));
+  }
+  if (!lines.length) return null;
+  return h("div", { class: "compat-sec torisetsu" }, h("div", { class: "compat-title" }, h("span", {}, "📖 ふたりのトリセツ")), h("ul", {}, ...lines));
+}
+
+const PROFILE_KEYS = ["birthday", "blood", "mbti", "loveName", "hobby", "food", "happy", "ng", "memo", "love_lf", "love_ca", "love_rp", "love_eo"];
+$("#pfBlood").replaceChildren(h("option", { value: "" }, "未入力"), ...BLOOD.map((b) => h("option", { value: b }, `${b}型`)));
+$("#pfMbti").replaceChildren(h("option", { value: "" }, "未入力"), ...MBTI.map((m) => h("option", { value: m }, `${m} ${MBTI_NICK[m]}`)));
+$("#pfLove").replaceChildren(...LOVE_AXES.map((ax) =>
+  h("select", { name: "love_" + ax.key, "aria-label": "ラブタイプ" },
+    h("option", { value: "" }, "−"), ...ax.options.map(([v, label]) => h("option", { value: v }, label)))));
+
+function openProfile(w) {
+  const f = $("#profileForm");
+  const p = state.profiles[w];
+  f.reset();
+  f.elements.who.value = w;
+  for (const k of PROFILE_KEYS) f.elements[k].value = p[k] || "";
+  $("#profileTitle").textContent = `${nameOf(w)}のプロフィール`;
+  $("#profileDialog").showModal();
+}
+
+$("#profileForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const f = ev.target;
+  const data = {};
+  for (const k of PROFILE_KEYS) data[k] = (f.elements[k].value || "").trim();
+  state.store.save(room(), "profiles", f.elements.who.value, data);
+  $("#profileDialog").close();
+  toast(data.birthday ? "保存しました。誕生日をカレンダーに入れました 🎂" : "保存しました");
+});
+
 /* ---------- 起動 ---------- */
 function rerender() {
   renderCalendar();
   renderPlaces();
   renderAlbum();
+  renderCouple();
   if (!$("#settings").hidden) renderSettings();
 }
 
@@ -763,6 +878,12 @@ function start() {
     state.store.watch(r, "events", (list) => { state.events = list; renderCalendar(); renderPlaces(); }),
     state.store.watch(r, "anniv", (list) => { state.anniv = list; renderCalendar(); if (!$("#settings").hidden) renderAnnivList(); }),
     state.store.watch(r, "photos", (list) => { state.photos = list; renderAlbum(); renderMemoryPhotos(); }),
+    state.store.watch(r, "profiles", (list) => {
+      state.profiles = { a: {}, b: {} };
+      for (const x of list) if (x.id === "a" || x.id === "b") state.profiles[x.id] = x;
+      renderCouple(); renderCalendar();
+      if (!$("#settings").hidden) renderAnnivList();
+    }),
   ];
 }
 
@@ -779,7 +900,7 @@ $("#nextMonth").addEventListener("click", () => moveMonth(1));
 /* ---------- スワイプ ----------
    カレンダーの日付の部分を左右にスワイプ → 月を変える
    それ以外の場所を左右にスワイプ → となりのタブへ */
-const TAB_ORDER = ["calendar", "places", "album", "settings"];
+const TAB_ORDER = ["calendar", "places", "album", "couple", "settings"];
 function animate(el, step) {
   el.classList.remove("slide-next", "slide-prev");
   void el.offsetWidth; // アニメーションをやり直すため
