@@ -1,9 +1,115 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ペアコード(長くてランダムな文字列)を知っている人だけが、そのペアのデータを読み書きできる
-    match /rooms/{roomId}/{document=**} {
-      allow read, write: if request.auth != null && roomId.size() >= 20;
+
+    // ---- ペア(部屋)の共通の道具 ----
+    function roomData(r) { return get(/databases/$(database)/documents/rooms/$(r)).data; }
+    function membersOf(r) { return roomData(r).get('members', {}); }
+    function isA(r) { return membersOf(r).get('a', '') == request.auth.uid; }
+    function isB(r) { return membersOf(r).get('b', '') == request.auth.uid; }
+    function isMember(r) { return request.auth != null && (isA(r) || isB(r)); }
+    function myRole(r) { return isA(r) ? 'a' : 'b'; }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    // 自分が書いたもの(addedBy が自分の立場)か
+    function ownsOld(r) { return resource.data.get('addedBy', '') == myRole(r); }
+    function ownsNew(r) { return request.resource.data.get('addedBy', '') == myRole(r); }
+
+    // ---- ペアの部屋そのもの(名前・メンバー) ----
+    match /rooms/{r} {
+      allow read: if request.auth != null;
+
+      // 招待する側(ひとり目)が部屋を作る
+      allow create: if request.auth != null
+        && r.size() >= 20
+        && request.resource.data.get('members', {}).get('a', '') == request.auth.uid
+        && !request.resource.data.get('members', {}).keys().hasAny(['b']);
+
+      allow update: if request.auth != null && (
+        // メンバーは自分の名前だけ変えられる
+        (isMember(r)
+          && changed().hasOnly(['names', 'updatedAt'])
+          && request.resource.data.get('names', {}).diff(resource.data.get('names', {})).affectedKeys().hasOnly([myRole(r)]))
+        // 空いている枠に入る(コードで参加・以前からの部屋の登録)
+        || claimEmpty(r, 'a') || claimEmpty(r, 'b')
+        // 復元コードで自分の枠に戻る
+        || reclaim(r, 'a') || reclaim(r, 'b')
+      );
+
+      function claimEmpty(r, slot) {
+        let before = resource.data.get('members', {});
+        let after = request.resource.data.get('members', {});
+        return !before.keys().hasAny([slot])
+          && after.get(slot, '') == request.auth.uid
+          && after.diff(before).affectedKeys().hasOnly([slot])
+          && changed().hasOnly(['members', 'names', 'updatedAt'])
+          && request.resource.data.get('names', {}).diff(resource.data.get('names', {})).affectedKeys().hasOnly([slot]);
+      }
+      function reclaim(r, slot) {
+        let before = resource.data.get('members', {});
+        let after = request.resource.data.get('members', {});
+        let claim = /databases/$(database)/documents/rooms/$(r)/claims/$(request.auth.uid);
+        return exists(claim)
+          && get(claim).data.role == slot
+          && after.get(slot, '') == request.auth.uid
+          && after.diff(before).affectedKeys().hasOnly([slot])
+          && changed().hasOnly(['members', 'updatedAt']);
+      }
+
+      // ---- 復元コード(だれも読めない。自分の枠のものだけ作り直せる) ----
+      match /secrets/{slot} {
+        allow read: if false;
+        allow create, update: if isMember(r) && slot == myRole(r)
+          && request.resource.data.get('key', '').size() >= 16;
+      }
+      // 復元コードが合っていれば「この端末は slot の人」と名乗れる
+      match /claims/{uid} {
+        allow read: if false;
+        allow create, update: if request.auth != null && uid == request.auth.uid
+          && request.resource.data.role in ['a', 'b']
+          && exists(/databases/$(database)/documents/rooms/$(r)/secrets/$(request.resource.data.role))
+          && request.resource.data.key == get(/databases/$(database)/documents/rooms/$(r)/secrets/$(request.resource.data.role)).data.key;
+      }
+
+      // ---- 予定・記念日・写真・いま: 作った人だけが変更・削除できる ----
+      match /{kind}/{id} {
+        allow read: if isMember(r) && kind in ['events', 'anniv', 'photos', 'posts', 'places', 'profiles'];
+      }
+      match /events/{id} {
+        allow create: if isMember(r) && ownsNew(r);
+        allow update: if isMember(r) && ownsOld(r) && ownsNew(r);
+        allow delete: if isMember(r) && ownsOld(r);
+      }
+      match /anniv/{id} {
+        allow create: if isMember(r) && ownsNew(r);
+        allow update: if isMember(r) && ownsOld(r) && ownsNew(r);
+        allow delete: if isMember(r) && ownsOld(r);
+      }
+      match /photos/{id} {
+        allow create: if isMember(r) && ownsNew(r) && request.resource.data.get('data', '').size() < 900000;
+        allow delete: if isMember(r) && ownsOld(r);
+      }
+      match /posts/{id} {
+        allow create: if isMember(r) && ownsNew(r) && request.resource.data.get('photo', '').size() < 900000;
+        allow delete: if isMember(r) && ownsOld(r);
+      }
+
+      // ---- 行きたい所: 中身は作った人だけ。♡・感想・「行った」は自分の分だけ ----
+      match /places/{id} {
+        allow create: if isMember(r) && ownsNew(r);
+        allow delete: if isMember(r) && ownsOld(r);
+        allow update: if isMember(r) && (
+          (ownsOld(r) && ownsNew(r))
+          || (myRole(r) == 'a' && changed().hasOnly(['want_a', 'stars_a', 'text_a', 'done', 'visitedOn', 'updatedAt']))
+          || (myRole(r) == 'b' && changed().hasOnly(['want_b', 'stars_b', 'text_b', 'done', 'visitedOn', 'updatedAt']))
+        );
+      }
+
+      // ---- プロフィール: 自分のものだけ ----
+      match /profiles/{slot} {
+        allow create, update: if isMember(r) && slot == myRole(r)
+          && request.resource.data.get('avatar', '').size() < 200000;
+        allow delete: if false;
+      }
     }
   }
 }

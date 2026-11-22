@@ -125,6 +125,8 @@ export function diagnose(pa, pb) {
     const [s, g, c] = lovePair(la, lb);
     sections.push({ title: `💘 ラブタイプ ${loveCode(pa) || "?"} × ${loveCode(pb) || "?"}`, score: s, good: g, care: c });
   }
+  // 表示は 80〜100% の範囲にする(ふたりで楽しむためのものなので)
+  for (const s of sections) s.score = Math.max(80, Math.min(100, Math.round(80 + (s.score - 60) * 20 / 38)));
   const total = sections.length ? Math.round(sections.reduce((n, x) => n + x.score, 0) / sections.length) : null;
   return { total, sections };
 }
@@ -135,8 +137,8 @@ export function loveCode(p) {
 }
 
 export function totalMessage(score) {
-  if (score >= 85) return "とっても相性ばっちり!このまま仲良くね 💞";
-  if (score >= 75) return "いい相性。違いも楽しめる二人です 😊";
-  if (score >= 65) return "違うところがあるからこそ、補い合える二人 🤝";
+  if (score >= 95) return "運命レベルの相性!このまま仲良くね 💞";
+  if (score >= 90) return "とっても相性ばっちり!違いも楽しめる二人です 😊";
+  if (score >= 85) return "違うところがあるからこそ、補い合える二人 🤝";
   return "正反対だからこそ、毎日が新しい発見。言葉で伝え合うのが仲良しのコツ 💬";
 }

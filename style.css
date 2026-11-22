@@ -300,6 +300,69 @@ fieldset.love legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
 .torisetsu ul { list-style: "💗 "; }
 .small-note { font-size: 11px; margin-top: 12px; }
 
+/* アイコン */
+.avatar { display: inline-grid; place-items: center; border-radius: 99px; object-fit: cover; flex: none; background: var(--line); color: #fff; font-weight: 700; border: 2px solid var(--card); }
+.avatar.a { box-shadow: 0 0 0 2px var(--a); }
+.avatar.b { box-shadow: 0 0 0 2px var(--b); }
+.avatar.letter.a { background: var(--a); }
+.avatar.letter.b { background: var(--b); }
+.avatar.sm { width: 32px; height: 32px; font-size: 14px; }
+.avatar.md { width: 48px; height: 48px; font-size: 20px; }
+.avatar.lg { width: 88px; height: 88px; font-size: 36px; }
+.avatar.xl { width: 112px; height: 112px; font-size: 44px; border-width: 3px; }
+.avatar-edit { display: flex; align-items: center; gap: 14px; margin: 6px 0 4px; }
+.profile-head .muted { font-size: 12px; }
+.ro-note { background: var(--bg); border: 1px dashed var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13px; color: var(--muted); margin: 0 0 6px; }
+details.card summary { cursor: pointer; }
+
+/* 起動画面 */
+.splash {
+  position: fixed; inset: 0; z-index: 50;
+  background: linear-gradient(160deg, #ffe3ea 0%, #fff8f9 45%, #ece4fb 100%);
+  display: grid; place-items: center; padding: 24px;
+  transition: opacity .35s ease;
+}
+@media (prefers-color-scheme: dark) { .splash { background: linear-gradient(160deg, #3a2530 0%, #1d181b 50%, #2a2338 100%); } }
+.splash.leaving { opacity: 0; }
+.splash-body { text-align: center; max-width: 420px; }
+.splash-pair { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.splash-person { display: flex; flex-direction: column; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; min-width: 0; }
+.splash-heart { font-size: 44px; color: var(--accent); animation: beat 1.2s ease-in-out infinite; }
+@keyframes beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.25); } 30% { transform: scale(1); } 45% { transform: scale(1.18); } }
+.splash-days { margin-top: 26px; font-size: 16px; }
+.splash-days b { font-size: 30px; color: var(--accent); }
+.splash-now { margin-top: 14px; font-size: 14px; color: var(--muted); background: var(--card); border-radius: 14px; padding: 10px 14px; }
+.splash-tap { margin-top: 34px; font-size: 13px; color: var(--muted); animation: blink 2s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .splash-heart, .splash-tap { animation: none; } }
+
+/* いま */
+.now-cards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-bottom: 12px; }
+.now-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; border-top: 4px solid var(--both); min-width: 0; }
+.now-card.a { border-top-color: var(--a); }
+.now-card.b { border-top-color: var(--b); }
+.now-who { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.now-who .muted { font-size: 11px; margin-left: auto; white-space: nowrap; }
+.now-photo { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; margin-top: 8px; display: block; cursor: pointer; }
+.now-text { margin-top: 8px; font-size: 15px; font-weight: 600; word-break: break-word; }
+.post-form textarea { margin: 0 0 8px; }
+.post-form .chips { margin: 0 -16px 4px; }
+.post-form .actions { margin-top: 8px; }
+.post-preview { display: flex; align-items: center; gap: 10px; }
+.post-preview img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; }
+.posts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.post { display: flex; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.post-body { flex: 1; min-width: 0; }
+.post-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.post-head .muted { font-size: 12px; }
+.post-head .small { padding: 2px 8px; font-size: 12px; }
+.post-text { margin-top: 4px; word-break: break-word; white-space: pre-wrap; }
+.post-photo { width: 100%; max-height: 320px; object-fit: cover; border-radius: 10px; margin-top: 8px; display: block; cursor: pointer; }
+
+/* タブが6つになったので詰める */
+.tabs button { font-size: 10px; padding: 7px 0 9px; }
+.tabs button span { font-size: 19px; }
+
 /* スワイプの動き */
 @keyframes slideNext { from { transform: translateX(36px); opacity: .3; } to { transform: none; opacity: 1; } }
 @keyframes slidePrev { from { transform: translateX(-36px); opacity: .3; } to { transform: none; opacity: 1; } }

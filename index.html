@@ -36,6 +36,13 @@
       <button id="btnJoin">コードで参加する</button>
       <p id="setupMsg" class="error"></p>
     </div>
+    <details class="card">
+      <summary><b>機種変更・アプリを消したときは(復元コードで戻る)</b></summary>
+      <label>ペアコード<input id="recoverPair" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <label>復元コード<input id="recoverCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="A-XXXX-XXXX-XXXX-XXXX"></label>
+      <button id="btnRecover">元のペアに戻る</button>
+      <p id="recoverMsg" class="error"></p>
+    </details>
   </section>
 
   <!-- カレンダー -->
@@ -56,6 +63,22 @@
       </div>
       <ul id="dayEvents" class="list"></ul>
     </div>
+  </section>
+
+  <!-- いま(今なにしてる?) -->
+  <section id="now" class="view" hidden>
+    <div class="now-cards" id="nowCards"></div>
+    <form id="postForm" class="card post-form">
+      <textarea id="postText" rows="2" maxlength="200" placeholder="いま何してる?"></textarea>
+      <div class="chips" id="quickChips"></div>
+      <div id="postPreview" class="post-preview"></div>
+      <div class="actions">
+        <label class="photo-add">📷 写真<input type="file" id="postPhotoInput" accept="image/*" hidden></label>
+        <span class="grow"></span>
+        <button type="submit" class="primary">送る</button>
+      </div>
+    </form>
+    <ul id="postList" class="posts"></ul>
   </section>
 
   <!-- 行きたい所 -->
@@ -94,12 +117,9 @@
   <!-- 設定 -->
   <section id="settings" class="view" hidden>
     <div class="card">
-      <h2>ふたりの名前</h2>
-      <label><span class="dot a"></span>ひとり目<input id="nameA" maxlength="12"></label>
-      <label><span class="dot b"></span>ふたり目<input id="nameB" maxlength="12"></label>
-      <label>この端末を使っているのは
-        <select id="whoAmI"><option value="a">ひとり目</option><option value="b">ふたり目</option></select>
-      </label>
+      <h2>名前</h2>
+      <label><span class="dot" id="myNameDot"></span><span id="myNameLabel">あなた</span><input id="myNameInput" maxlength="12"></label>
+      <p class="muted"><span class="dot" id="partnerNameDot"></span>パートナー: <b id="partnerNameText"></b>(相手の名前は相手だけが変えられます)</p>
       <button id="btnSaveNames" class="primary">保存</button>
     </div>
     <div class="card">
@@ -127,6 +147,13 @@
       <p id="copyMsg" class="muted"></p>
     </div>
     <div class="card">
+      <h2>復元コード(あなた専用)</h2>
+      <p class="muted">機種変更やアプリを消したときに、自分の立場に戻るためのコードです。<b>相手にも教えないで</b>、スクショやメモで保存しておいてください。</p>
+      <div class="code-box"><code id="recoveryCode"></code><button id="btnCopyRecovery" class="small">コピー</button></div>
+      <button id="btnNewRecovery" class="small ghost">復元コードを作り直す</button>
+      <p id="recoveryMsg" class="muted"></p>
+    </div>
+    <div class="card">
       <h2>ホーム画面に追加するには</h2>
       <p class="muted"><b>iPhone</b>: Safari で開き、下の共有ボタン(□↑)→「ホーム画面に追加」</p>
       <p class="muted"><b>Android</b>: Chrome で開き、右上の︙ →「ホーム画面に追加」または「アプリをインストール」</p>
@@ -138,8 +165,9 @@
   </section>
 
   <nav class="tabs" id="tabs" hidden>
-    <button data-view="calendar" class="on"><span>📅</span>カレンダー<i class="badge" data-badge="calendar"></i></button>
-    <button data-view="places"><span>📍</span>行きたい所<i class="badge" data-badge="places"></i></button>
+    <button data-view="calendar" class="on"><span>📅</span>予定<i class="badge" data-badge="calendar"></i></button>
+    <button data-view="now"><span>💬</span>いま<i class="badge" data-badge="now"></i></button>
+    <button data-view="places"><span>📍</span>行きたい<i class="badge" data-badge="places"></i></button>
     <button data-view="album"><span>📷</span>思い出<i class="badge" data-badge="album"></i></button>
     <button data-view="couple"><span>💞</span>ふたり</button>
     <button data-view="settings"><span>⚙️</span>設定</button>
@@ -226,6 +254,10 @@
 <dialog id="profileDialog">
   <form method="dialog" id="profileForm">
     <h2 id="profileTitle">プロフィール</h2>
+    <div class="avatar-edit">
+      <div id="avatarPreview"></div>
+      <label class="photo-add">📷 アイコン写真を選ぶ<input type="file" id="avatarInput" accept="image/*" hidden></label>
+    </div>
     <label>誕生日(入れるとカレンダーに自動で入ります)<input name="birthday" type="date"></label>
     <div class="row2">
       <label>血液型<select name="blood" id="pfBlood"></select></label>
@@ -276,6 +308,11 @@
 </dialog>
 
 <div id="toast" class="toast" hidden></div>
+
+<!-- 起動画面: ふたりのアイコンとハート。タップで閉じる -->
+<div id="splash" class="splash" hidden>
+  <div id="splashBody" class="splash-body"></div>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

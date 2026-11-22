@@ -71,6 +71,7 @@ const state = {
   events: [],
   anniv: [],
   photos: [],
+  posts: [],
   profiles: { a: {}, b: {} },
   month: (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
   selected: today,
@@ -87,7 +88,7 @@ const room = () => state.device.room;
 /* ---------- 「相手が追加した新しいもの」 ----------
    タブ(カレンダー/行きたい所/思い出)ごとに「最後に見た時刻」を覚えておき、
    それより後に相手が追加したものに NEW を付ける。タブを離れた時に「見た」ことにする。 */
-const CATS = ["calendar", "places", "album"];
+const CATS = ["calendar", "now", "places", "album"];
 let currentView = null;
 const snap = {}; // 今表示している NEW の基準(タブに入った時点の「最後に見た時刻」)
 function seenOf(cat) { return (state.device.seen && state.device.seen[cat]) || state.device.lastSeen || 0; }
@@ -114,6 +115,7 @@ function renderBadges() {
     calendar: state.events.filter((x) => unseen(x, "calendar")).length,
     places: state.places.filter((p) => !p.done && unseen(p, "places")).length,
     album: state.photos.filter((x) => unseen(x, "album")).length,
+    now: state.posts.filter((x) => unseen(x, "now")).length,
   };
   $$("[data-badge]").forEach((b) => {
     const n = b.dataset.badge === currentView ? 0 : counts[b.dataset.badge] || 0;
@@ -537,6 +539,7 @@ let viewingPhoto = null;
 function openPhoto(x) {
   viewingPhoto = x;
   $("#photoBig").src = x.data;
+  $("#btnDeletePhoto").hidden = !mine(x);
   $("#photoDialog").showModal();
 }
 $("#btnDeletePhoto").addEventListener("click", () => {
@@ -546,10 +549,24 @@ $("#btnDeletePhoto").addEventListener("click", () => {
   toast("写真を削除しました");
 });
 
+/* ---------- 相手のものは見るだけ ---------- */
+const mine = (x) => !x || !x.id || !x.addedBy || x.addedBy === me();
+function setReadonly(form, ro, note) {
+  form.querySelectorAll("input:not([type=hidden]), select, textarea").forEach((el) => (el.disabled = ro));
+  const submit = form.querySelector("button[type=submit]");
+  if (submit) submit.hidden = ro;
+  let n = form.querySelector(".ro-note");
+  if (!n) { n = h("p", { class: "ro-note" }); form.querySelector("h2").after(n); }
+  n.textContent = note || "";
+  n.hidden = !ro;
+}
+
 /* ---------- 予定の入力 ---------- */
 function openEvent(e = {}) {
   const f = $("#eventForm");
   f.reset();
+  const ro = !mine(e);
+  setReadonly(f, ro, `${nameOf(e.addedBy)}が入れた予定です(見るだけ)`);
   f.title.value = e.title || "";
   f.date.value = e.date || state.selected;
   f.endDate.value = e.endDate || "";
@@ -560,8 +577,8 @@ function openEvent(e = {}) {
   f.placeId.value = e.placeId || "";
   f.querySelector(`input[name=who][value="${e.who || "both"}"]`).checked = true;
   $$("#eventForm .wname").forEach((s) => (s.textContent = nameOf(s.dataset.w)));
-  $("#eventDialogTitle").textContent = e.id ? "予定を変更" : "予定を追加";
-  $("#btnDeleteEvent").hidden = !e.id;
+  $("#eventDialogTitle").textContent = ro ? "予定" : e.id ? "予定を変更" : "予定を追加";
+  $("#btnDeleteEvent").hidden = !e.id || ro;
   $("#eventMsg").textContent = "";
   $("#eventDialog").showModal();
 }
@@ -610,14 +627,16 @@ $("#genreSelect").replaceChildren(...GENRES.map((g) => h("option", { value: g.id
 function openPlace(p = {}) {
   const f = $("#placeForm");
   f.reset();
+  const ro = !mine(p);
+  setReadonly(f, ro, `${nameOf(p.addedBy)}が追加した場所です(見るだけ。♡ や「予定に」は使えます)`);
   f.title.value = p.title || "";
   f.genre.value = p.genre || (state.genre !== "all" ? state.genre : "outing");
   f.area.value = p.area || "";
   f.url.value = p.url || "";
   f.memo.value = p.memo || "";
   f.id.value = p.id || "";
-  $("#placeDialogTitle").textContent = p.id ? "行きたい所を変更" : "行きたい所を追加";
-  $("#btnDeletePlace").hidden = !p.id;
+  $("#placeDialogTitle").textContent = ro ? "行きたい所" : p.id ? "行きたい所を変更" : "行きたい所を追加";
+  $("#btnDeletePlace").hidden = !p.id || ro;
   $("#placeDialog").showModal();
 }
 
@@ -646,12 +665,13 @@ $$("dialog").forEach((d) => d.addEventListener("click", (ev) => { if (ev.target 
 /* ---------- 設定 ---------- */
 function renderSettings() {
   if (!state.device) return;
-  $("#nameA").value = state.names.a || "";
-  $("#nameB").value = state.names.b || "";
-  $("#whoAmI").value = me();
-  $("#whoAmI").options[0].textContent = `ひとり目(${nameOf("a")})`;
-  $("#whoAmI").options[1].textContent = `ふたり目(${nameOf("b")})`;
+  $("#myNameLabel").textContent = me() === "a" ? "あなた(招待した側)" : "あなた(コードで参加した側)";
+  $("#myNameDot").className = `dot ${me()}`;
+  $("#myNameInput").value = state.names[me()] || "";
+  $("#partnerNameText").textContent = state.names[partner()] || "(まだ参加していません)";
+  $("#partnerNameDot").className = `dot ${partner()}`;
   $("#pairCode").textContent = room();
+  $("#recoveryCode").textContent = state.device.recovery || "(まだありません)";
   renderAnnivList();
 }
 
@@ -660,14 +680,16 @@ function renderAnnivList() {
     h("li", { class: "item anniv" },
       h("div", { class: "body" },
         h("div", { class: "t" }, (a.kind === "since" ? "💑 " : "🎂 ") + a.title),
-        h("div", { class: "s" }, `${a.kind === "yearly" ? `毎年 ${Number(a.date.slice(5, 7))}月${Number(a.date.slice(8))}日` : dayLabel(a.date)} · ${a.auto ? "プロフィールの誕生日から自動" : a.kind === "since" ? "この日から○日目" : "毎年の記念日"}`)),
+        h("div", { class: "s" }, `${a.kind === "yearly" ? `毎年 ${Number(a.date.slice(5, 7))}月${Number(a.date.slice(8))}日` : dayLabel(a.date)} · ${a.auto ? "プロフィールの誕生日から自動" : `${nameOf(a.addedBy)}が追加`}`)),
       a.auto
-        ? h("button", { class: "small ghost", onclick: () => { show("couple"); openProfile(a.who); } }, "変更")
-        : h("button", { class: "small ghost", onclick: () => {
-          if (!confirm(`「${a.title}」を削除しますか?`)) return;
-          state.store.remove(room(), "anniv", a.id);
-        } }, "削除")));
-  if (!items.length) items.push(h("li", { class: "empty" }, "まだありません。付き合った日や誕生日を入れてみよう"));
+        ? (a.who === me() ? h("button", { class: "small ghost", onclick: () => { show("couple"); openProfile(a.who); } }, "変更") : null)
+        : mine(a)
+          ? h("button", { class: "small ghost", onclick: () => {
+            if (!confirm(`「${a.title}」を削除しますか?`)) return;
+            state.store.remove(room(), "anniv", a.id);
+          } }, "削除")
+          : null));
+  if (!items.length) items.push(h("li", { class: "empty" }, "まだありません。付き合った日などを入れてみよう"));
   $("#annivList").replaceChildren(...items);
 }
 
@@ -682,24 +704,41 @@ $("#annivForm").addEventListener("submit", (ev) => {
 });
 
 $("#btnSaveNames").addEventListener("click", async () => {
-  const names = { a: $("#nameA").value.trim(), b: $("#nameB").value.trim() };
-  state.device.me = $("#whoAmI").value;
-  saveDevice(state.device);
-  await state.store.saveRoom(room(), { names });
-  toast("保存しました");
+  const name = $("#myNameInput").value.trim();
+  if (!name) { toast("名前を入れてください"); return; }
+  try {
+    await state.store.saveRoom(room(), { names: { [me()]: name } });
+    toast("保存しました");
+  } catch (e) {
+    console.error(e);
+    toast("保存できませんでした");
+  }
 });
 
-$("#btnCopyCode").addEventListener("click", async () => {
+async function copyText(text, msgEl, okMsg) {
   try {
-    await navigator.clipboard.writeText(room());
-    $("#copyMsg").textContent = "コピーしました。LINE などで相手に送ってください。";
+    await navigator.clipboard.writeText(text);
+    msgEl.textContent = okMsg;
   } catch {
-    $("#copyMsg").textContent = "コピーできませんでした。コードを長押しして選んでください。";
+    msgEl.textContent = "コピーできませんでした。長押しして選んでください。";
+  }
+}
+$("#btnCopyCode").addEventListener("click", () => copyText(room(), $("#copyMsg"), "コピーしました。LINE などで相手に送ってください。"));
+$("#btnCopyRecovery").addEventListener("click", () => copyText(state.device.recovery || "", $("#recoveryMsg"), "コピーしました。スクショやメモなど、自分だけが見られる所に保存してください。"));
+$("#btnNewRecovery").addEventListener("click", async () => {
+  if (state.device.recovery && !confirm("新しい復元コードを作りますか?(前のコードは使えなくなります)")) return;
+  try {
+    await makeRecovery();
+    renderSettings();
+    $("#recoveryMsg").textContent = "新しい復元コードを作りました。保存しておいてください。";
+  } catch (e) {
+    console.error(e);
+    $("#recoveryMsg").textContent = "作れませんでした。電波を確かめてください。";
   }
 });
 
 $("#btnLeave").addEventListener("click", () => {
-  if (!confirm("この端末のペア設定をやめますか?\n(ペアコードを控えておけば、あとで戻れます)")) return;
+  if (!confirm("この端末のペア設定をやめますか?\n(ペアコードと復元コードがあれば、あとで戻れます)")) return;
   state.unsub.forEach((u) => u());
   state.unsub = [];
   state.device = null;
@@ -707,13 +746,55 @@ $("#btnLeave").addEventListener("click", () => {
   show("setup");
 });
 
+/* ---------- 自分の立場(招待した側/参加した側)の登録 ----------
+   この端末のログイン ID を部屋の members に登録し、Firebase のルールで
+   「自分が作ったものだけ変更できる」ようにする。 */
+function randomKey(n) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const buf = new Uint32Array(n);
+  crypto.getRandomValues(buf);
+  return [...buf].map((x) => chars[x % chars.length]).join("");
+}
+// 復元コード: 「A-XXXX-XXXX-XXXX-XXXX」の形(先頭が立場)
+async function makeRecovery() {
+  const key = randomKey(16);
+  await state.store.saveNow(room(), "secrets", me(), { key });
+  state.device.recovery = `${me().toUpperCase()}-${key.match(/.{4}/g).join("-")}`;
+  saveDevice(state.device);
+}
+
+// 起動時: この端末が自分の枠に登録されているか確かめる(以前からのペアは、ここで登録される)
+async function ensureMembership() {
+  if (!state.store.shared) return "ok";
+  const data = await state.store.getRoom(room());
+  if (!data) return "missing";
+  const members = data.members || {};
+  if (members[me()] === state.store.uid) return "ok";
+  if (members[me()]) return "taken"; // 別の端末が登録済み → 復元コードが必要
+  await state.store.saveRoom(room(), { members: { [me()]: state.store.uid } });
+  if (!state.device.recovery) await makeRecovery().catch((e) => console.error(e));
+  return "ok";
+}
+
+function showSetupMessage(msg) {
+  show("setup");
+  $("#setupMsg").textContent = msg;
+}
+
 /* ---------- はじめての設定 ---------- */
 $("#btnNewPair").addEventListener("click", async () => {
   const name = $("#setupName").value.trim();
   if (!name) { $("#setupMsg").textContent = "名前を入れてください"; return; }
   const code = newCode();
-  await state.store.saveRoom(code, { names: { a: name, b: "" } });
-  state.device = { room: code, me: "a", lastSeen: Date.now() };
+  try {
+    await state.store.saveRoom(code, { names: { a: name }, members: { a: state.store.uid } });
+    state.device = { room: code, me: "a", lastSeen: Date.now() };
+    await makeRecovery();
+  } catch (e) {
+    console.error(e);
+    $("#setupMsg").textContent = "作れませんでした。電波を確かめてください。";
+    return;
+  }
   saveDevice(state.device);
   start();
   show("settings");
@@ -726,22 +807,58 @@ $("#btnJoin").addEventListener("click", async () => {
   $("#setupMsg").textContent = "";
   if (!name) { $("#setupMsg").textContent = "名前を入れてください"; return; }
   if (!code) { $("#setupMsg").textContent = "ペアコードを入れてください"; return; }
+  let data;
   try {
-    if (!(await state.store.roomExists(code))) {
-      $("#setupMsg").textContent = "そのペアコードは見つかりませんでした。もう一度確かめてください。";
-      return;
-    }
+    data = await state.store.getRoom(code);
   } catch (e) {
     console.error(e);
     $("#setupMsg").textContent = "つながりませんでした。電波を確かめてください。";
     return;
   }
-  await state.store.saveRoom(code, { names: { b: name } });
-  state.device = { room: code, me: "b", lastSeen: Date.now() };
+  if (!data) { $("#setupMsg").textContent = "そのペアコードは見つかりませんでした。もう一度確かめてください。"; return; }
+  if (data.members && data.members.b && data.members.b !== state.store.uid) {
+    $("#setupMsg").textContent = "このペアにはもう二人が参加しています。自分の端末を入れ替えたときは、下の「復元コードで戻る」を使ってください。";
+    return;
+  }
+  try {
+    await state.store.saveRoom(code, { names: { b: name }, members: { b: state.store.uid } });
+    state.device = { room: code, me: "b", lastSeen: Date.now() };
+    await makeRecovery();
+  } catch (e) {
+    console.error(e);
+    $("#setupMsg").textContent = "参加できませんでした。もう一度ためしてください。";
+    return;
+  }
   saveDevice(state.device);
   start();
   show("calendar");
   toast("ペアに参加しました");
+});
+
+// 機種変更・アプリを消したとき: ペアコード + 復元コードで自分の枠に戻る
+$("#btnRecover").addEventListener("click", async () => {
+  const code = normCode($("#recoverPair").value);
+  const rc = $("#recoverCode").value.trim().toUpperCase().replace(/[\s-]/g, "");
+  $("#recoverMsg").textContent = "";
+  if (!code || rc.length !== 17 || !"AB".includes(rc[0])) {
+    $("#recoverMsg").textContent = "ペアコードと復元コード(A- または B- で始まるコード)を入れてください";
+    return;
+  }
+  const role = rc[0].toLowerCase();
+  const key = rc.slice(1);
+  try {
+    await state.store.saveNow(code, "claims", state.store.uid, { role, key });
+    await state.store.saveRoom(code, { members: { [role]: state.store.uid } });
+  } catch (e) {
+    console.error(e);
+    $("#recoverMsg").textContent = "戻れませんでした。ペアコードと復元コードを確かめてください。";
+    return;
+  }
+  state.device = { room: code, me: role, lastSeen: Date.now(), recovery: `${role.toUpperCase()}-${key.match(/.{4}/g).join("-")}` };
+  saveDevice(state.device);
+  start();
+  show("calendar");
+  toast("元のペアに戻りました");
 });
 
 /* ---------- ふたりのプロフィール・相性 ---------- */
@@ -778,12 +895,21 @@ function profileCard(w) {
   ].filter(([, v]) => v);
   return h("div", { class: `card profile ${w}` },
     h("div", { class: "profile-head" },
-      h("span", { class: `dot ${w}` }), h("b", {}, nameOf(w)), w === me() ? h("span", { class: "muted" }, "(あなた)") : null,
+      avatar(w, "md"),
+      h("div", {}, h("b", {}, nameOf(w)), h("div", { class: "muted" }, w === me() ? "あなた" : "パートナー")),
       h("span", { class: "grow" }),
-      h("button", { class: "small", onclick: () => openProfile(w) }, "編集")),
+      w === me() ? h("button", { class: "small", onclick: () => openProfile(w) }, "編集") : null),
     rows.length
       ? h("dl", { class: "profile-list" }, ...rows.flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))
-      : h("p", { class: "muted" }, "まだ入力されていません。「編集」から入れてね"));
+      : h("p", { class: "muted" }, w === me() ? "まだ入力されていません。「編集」から入れてね" : "まだ入力されていません"));
+}
+
+// アイコン(写真がなければ名前の1文字目)
+function avatar(w, size = "md") {
+  const p = state.profiles[w] || {};
+  return p.avatar
+    ? h("img", { class: `avatar ${size} ${w}`, src: p.avatar, alt: nameOf(w) })
+    : h("span", { class: `avatar ${size} ${w} letter` }, (nameOf(w) || "?").slice(0, 1));
 }
 
 function renderCouple() {
@@ -834,24 +960,158 @@ $("#pfLove").replaceChildren(...LOVE_AXES.map((ax) =>
   h("select", { name: "love_" + ax.key, "aria-label": "ラブタイプ" },
     h("option", { value: "" }, "−"), ...ax.options.map(([v, label]) => h("option", { value: v }, label)))));
 
+let pendingAvatar = null; // 選んだけれどまだ保存していないアイコン
+function showAvatarPreview(src) {
+  const box = $("#avatarPreview");
+  box.replaceChildren(src ? h("img", { class: `avatar lg ${me()}`, src, alt: "" }) : h("span", { class: `avatar lg ${me()} letter` }, (nameOf(me()) || "?").slice(0, 1)));
+}
 function openProfile(w) {
+  if (w !== me()) return; // 相手のプロフィールは編集できない
   const f = $("#profileForm");
   const p = state.profiles[w];
   f.reset();
   f.elements.who.value = w;
   for (const k of PROFILE_KEYS) f.elements[k].value = p[k] || "";
+  pendingAvatar = null;
+  showAvatarPreview(p.avatar);
   $("#profileTitle").textContent = `${nameOf(w)}のプロフィール`;
   $("#profileDialog").showModal();
 }
 
+// アイコン写真: 真ん中を正方形に切り取って小さくする
+async function squareIcon(file, size = 240) {
+  const img = await loadImage(file);
+  const s = Math.min(img.naturalWidth, img.naturalHeight);
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  c.getContext("2d").drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, size, size);
+  return c.toDataURL("image/jpeg", 0.82);
+}
+$("#avatarInput").addEventListener("change", async (ev) => {
+  const file = ev.target.files[0];
+  ev.target.value = "";
+  if (!file) return;
+  try {
+    pendingAvatar = await squareIcon(file);
+    showAvatarPreview(pendingAvatar);
+  } catch (e) {
+    console.error(e);
+    toast("写真を読み込めませんでした");
+  }
+});
+
 $("#profileForm").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const f = ev.target;
+  if (f.elements.who.value !== me()) return;
   const data = {};
   for (const k of PROFILE_KEYS) data[k] = (f.elements[k].value || "").trim();
-  state.store.save(room(), "profiles", f.elements.who.value, data);
+  if (pendingAvatar) data.avatar = pendingAvatar;
+  state.store.save(room(), "profiles", me(), data);
   $("#profileDialog").close();
   toast(data.birthday ? "保存しました。誕生日をカレンダーに入れました 🎂" : "保存しました");
+});
+
+/* ---------- いま(今なにしてる?) ---------- */
+const QUICK = ["🍚 ごはん中", "💼 仕事中", "🚃 移動中", "🛁 お風呂", "🎮 ゲーム中", "📺 テレビ見てる", "🛒 買い物中", "😴 もう寝るね", "💭 会いたい"];
+function timeAgo(ms) {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return "たった今";
+  if (s < 3600) return `${Math.floor(s / 60)}分前`;
+  if (s < 86400) return `${Math.floor(s / 3600)}時間前`;
+  const d = new Date(ms);
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+const latestPost = (w) => state.posts.filter((p) => p.addedBy === w).sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0))[0];
+
+function nowCard(w) {
+  const p = latestPost(w);
+  return h("div", { class: `now-card ${w}` },
+    h("div", { class: "now-who" }, avatar(w, "sm"), h("b", {}, nameOf(w)), h("span", { class: "muted" }, p ? timeAgo(p.createdAt) : "")),
+    p && p.photo ? h("img", { class: "now-photo", src: p.photo, alt: "", onclick: () => openPostPhoto(p) }) : null,
+    h("div", { class: "now-text" }, p ? (p.text || "📷") : "まだ投稿がありません"));
+}
+
+function renderNow() {
+  if (!state.device) return;
+  $("#nowCards").replaceChildren(nowCard(partner()), nowCard(me()));
+  $("#quickChips").replaceChildren(...QUICK.map((q) =>
+    h("button", { type: "button", class: "chip", onclick: () => { $("#postText").value = q; $("#postText").focus(); } }, q)));
+  const list = state.posts.slice().sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0));
+  const items = list.map((p) => h("li", { class: `post ${p.addedBy}` },
+    avatar(p.addedBy, "sm"),
+    h("div", { class: "post-body" },
+      h("div", { class: "post-head" }, h("b", {}, nameOf(p.addedBy)), h("span", { class: "muted" }, timeAgo(p.createdAt)), newBadge(p, "now"),
+        h("span", { class: "grow" }),
+        mine(p) ? h("button", { class: "small ghost", onclick: () => {
+          if (!confirm("この投稿を削除しますか?")) return;
+          state.store.remove(room(), "posts", p.id);
+        } }, "削除") : null),
+      p.text ? h("div", { class: "post-text" }, p.text) : null,
+      p.photo ? h("img", { class: "post-photo", src: p.photo, alt: "", loading: "lazy", onclick: () => openPostPhoto(p) }) : null)));
+  if (!items.length) items.push(h("li", { class: "empty" }, "「いま何してる?」を写真や文字で送ってみよう"));
+  $("#postList").replaceChildren(...items);
+  renderBadges();
+}
+
+function openPostPhoto(p) {
+  viewingPhoto = null;
+  $("#photoBig").src = p.photo;
+  $("#btnDeletePhoto").hidden = true;
+  $("#photoDialog").showModal();
+}
+
+let postPhoto = null;
+$("#postPhotoInput").addEventListener("change", async (ev) => {
+  const file = ev.target.files[0];
+  ev.target.value = "";
+  if (!file) return;
+  try {
+    postPhoto = await compress(file);
+    $("#postPreview").replaceChildren(h("img", { src: postPhoto, alt: "" }),
+      h("button", { type: "button", class: "small ghost", onclick: () => { postPhoto = null; $("#postPreview").replaceChildren(); } }, "写真をやめる"));
+  } catch (e) {
+    console.error(e);
+    toast("写真を読み込めませんでした");
+  }
+});
+$("#postForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const text = $("#postText").value.trim();
+  if (!text && !postPhoto) { toast("文字か写真を入れてね"); return; }
+  const data = { text, addedBy: me() };
+  if (postPhoto) data.photo = postPhoto;
+  state.store.save(room(), "posts", null, data);
+  $("#postText").value = "";
+  postPhoto = null;
+  $("#postPreview").replaceChildren();
+  toast("送りました");
+});
+
+/* ---------- 起動画面(ふたりのアイコンとハート) ---------- */
+let splashOpen = false;
+function renderSplash() {
+  if (!splashOpen || !state.device) return;
+  const since = allAnniv().filter((a) => a.kind === "since" && a.date <= today).sort((x, y) => x.date.localeCompare(y.date))[0];
+  const p = latestPost(partner());
+  $("#splashBody").replaceChildren(...[
+    h("div", { class: "splash-pair" },
+      h("div", { class: "splash-person" }, avatar(me(), "xl"), h("div", {}, nameOf(me()))),
+      h("div", { class: "splash-heart" }, "♥"),
+      h("div", { class: "splash-person" }, avatar(partner(), "xl"), h("div", {}, nameOf(partner())))),
+    since ? h("div", { class: "splash-days" }, "付き合って ", h("b", {}, (daysBetween(since.date, today) + 1).toLocaleString()), " 日目") : null,
+    p ? h("div", { class: "splash-now" }, `${nameOf(partner())}のいま: ${p.text || "📷 写真"}(${timeAgo(p.createdAt)})`) : null,
+    h("div", { class: "splash-tap" }, "タップしてはじめる")].filter(Boolean));
+}
+function openSplash() {
+  splashOpen = true;
+  $("#splash").hidden = false;
+  renderSplash();
+}
+$("#splash").addEventListener("click", () => {
+  splashOpen = false;
+  $("#splash").classList.add("leaving");
+  setTimeout(() => { $("#splash").hidden = true; $("#splash").classList.remove("leaving"); }, 350);
 });
 
 /* ---------- 起動 ---------- */
@@ -860,6 +1120,8 @@ function rerender() {
   renderPlaces();
   renderAlbum();
   renderCouple();
+  renderNow();
+  renderSplash();
   if (!$("#settings").hidden) renderSettings();
 }
 
@@ -881,9 +1143,10 @@ function start() {
     state.store.watch(r, "profiles", (list) => {
       state.profiles = { a: {}, b: {} };
       for (const x of list) if (x.id === "a" || x.id === "b") state.profiles[x.id] = x;
-      renderCouple(); renderCalendar();
+      renderCouple(); renderCalendar(); renderNow(); renderSplash();
       if (!$("#settings").hidden) renderAnnivList();
     }),
+    state.store.watch(r, "posts", (list) => { state.posts = list; renderNow(); renderSplash(); }, { limit: 60 }),
   ];
 }
 
@@ -900,7 +1163,7 @@ $("#nextMonth").addEventListener("click", () => moveMonth(1));
 /* ---------- スワイプ ----------
    カレンダーの日付の部分を左右にスワイプ → 月を変える
    それ以外の場所を左右にスワイプ → となりのタブへ */
-const TAB_ORDER = ["calendar", "places", "album", "couple", "settings"];
+const TAB_ORDER = ["calendar", "now", "places", "album", "couple", "settings"];
 function animate(el, step) {
   el.classList.remove("slide-next", "slide-prev");
   void el.offsetWidth; // アニメーションをやり直すため
@@ -909,7 +1172,7 @@ function animate(el, step) {
 let touch = null;
 document.addEventListener("touchstart", (ev) => {
   touch = null;
-  if (ev.touches.length !== 1 || document.querySelector("dialog[open]")) return;
+  if (ev.touches.length !== 1 || document.querySelector("dialog[open]") || !$("#splash").hidden) return;
   const target = ev.target;
   // 横にスクロールする部分や入力欄では反応させない
   if (target.closest(".countdowns, .chips, input, textarea, select, .tabs")) return;
@@ -948,8 +1211,27 @@ $("#placeSort").addEventListener("change", (ev) => { state.sort = ev.target.valu
     return;
   }
   $("#mode").textContent = state.store.shared ? "" : "お試しモード(この端末だけに保存)";
-  if (state.device && state.device.room) { start(); show("calendar"); }
-  else show("setup");
+  if (state.device && state.device.room) {
+    let status = "ok";
+    try {
+      status = await ensureMembership();
+    } catch (e) {
+      console.warn("登録の確認ができませんでした(電波がない?)", e); // 端末の保存分で開く
+    }
+    if (status === "ok") {
+      openSplash();
+      start();
+      show("calendar");
+    } else {
+      $("#recoverPair").value = state.device.room;
+      if (state.device.recovery) $("#recoverCode").value = state.device.recovery;
+      showSetupMessage(status === "taken"
+        ? "この端末は、ペアにまだ登録されていません。下の「復元コードで戻る」に復元コードを入れてください。"
+        : "ペアが見つかりませんでした。もう一度ペアを作るか、参加してください。");
+      state.device = null;
+      saveDevice(null);
+    }
+  } else show("setup");
 
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("sw.js").catch((e) => console.warn(e));
