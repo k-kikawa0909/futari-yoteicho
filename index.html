@@ -187,6 +187,11 @@
       </form>
     </div>
     <div class="card">
+      <h2>🗑 ゴミ箱</h2>
+      <p class="muted">削除したものは、ここに3日間残ります。「元に戻す」で戻せます。3日たつと自動で完全に消えます。(自分が削除したものだけ表示)</p>
+      <div id="trashList"></div>
+    </div>
+    <div class="card">
       <h2>ペアコード</h2>
       <p class="muted">相手の端末でこのコードを入れると、同じ予定帳を見られます。他の人には教えないでください。</p>
       <div class="code-box"><code id="pairCode"></code><button id="btnCopyCode" class="small">コピー</button></div>
@@ -289,6 +294,7 @@
     <input type="hidden" name="placeId">
     <input type="hidden" name="stars">
     <div class="actions">
+      <button type="button" id="btnDeleteVisited" class="danger" hidden>削除</button>
       <span class="grow"></span>
       <button type="button" class="ghost" data-close>閉じる</button>
       <button type="submit" class="primary">保存</button>

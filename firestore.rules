@@ -85,8 +85,9 @@ service cloud.firestore {
         allow create: if isMember(r) && ownsNew(r)
           && request.resource.data.get('to', '') in ['a', 'b']
           && request.resource.data.get('to', '') != myRole(r);
-        allow update: if isMember(r) && resource.data.get('to', '') == myRole(r)
-          && changed().hasOnly(['answer', 'answeredAt', 'updatedAt']);
+        allow update: if isMember(r) && (
+          (resource.data.get('to', '') == myRole(r) && changed().hasOnly(['answer', 'answeredAt', 'updatedAt']))
+          || (ownsOld(r) && changed().hasOnly(['deletedAt', 'updatedAt'])));
         allow delete: if isMember(r) && ownsOld(r);
       }
       match /events/{id} {
@@ -101,10 +102,12 @@ service cloud.firestore {
       }
       match /photos/{id} {
         allow create: if isMember(r) && ownsNew(r) && request.resource.data.get('data', '').size() < 900000;
+        allow update: if isMember(r) && ownsOld(r) && changed().hasOnly(['deletedAt', 'updatedAt']);
         allow delete: if isMember(r) && ownsOld(r);
       }
       match /posts/{id} {
         allow create: if isMember(r) && ownsNew(r) && request.resource.data.get('photo', '').size() < 900000;
+        allow update: if isMember(r) && ownsOld(r) && changed().hasOnly(['deletedAt', 'updatedAt']);
         allow delete: if isMember(r) && ownsOld(r);
       }
 

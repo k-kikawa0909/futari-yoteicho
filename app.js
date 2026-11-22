@@ -40,12 +40,95 @@ const GENRES = [
 ];
 const genreLabel = (id) => (GENRES.find((g) => g.id === id) || GENRES[4]).label;
 
-function toast(msg) {
+function toast(msg, undo) {
   const t = $("#toast");
-  t.textContent = msg;
+  t.replaceChildren(document.createTextNode(msg));
+  if (undo) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "元に戻す";
+    b.addEventListener("click", () => { t.hidden = true; undo(); });
+    t.append(b);
+  }
   t.hidden = false;
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => (t.hidden = true), 2200);
+  toast.timer = setTimeout(() => (t.hidden = true), undo ? 6000 : 2200);
+}
+
+/* ---------- ゴミ箱(削除は2段階: 確認 → ゴミ箱へ。3日たつと自動で完全に消える) ---------- */
+const TRASH_DAYS = 3;
+const TRASH_MS = TRASH_DAYS * 24 * 3600 * 1000;
+const TRASH_KINDS = { events: "📅 予定", places: "📍 行きたい所", anniv: "💑 記念日", photos: "🖼️ 写真", posts: "💬 いま", albums: "📚 アルバム", questions: "💌 質問" };
+const purged = new Set();
+function trashLabel(kind, x) {
+  if (kind === "posts") return x.text || "写真";
+  if (kind === "questions") return x.text || "";
+  if (kind === "photos") return "写真";
+  return x.title || "";
+}
+// 届いた一覧を「表示するもの」と「ゴミ箱のもの」に分ける
+function splitTrash(kind, list) {
+  state.trash[kind] = list.filter((x) => x.deletedAt);
+  purgeOld(kind);
+  if (state.device && !$("#settings").hidden) renderTrash();
+  return list.filter((x) => !x.deletedAt);
+}
+// 3日たったものを完全に消す(消せるのは作った本人の端末だけ)
+function purgeOld(kind) {
+  if (!state.device || !state.store) return;
+  for (const x of state.trash[kind] || []) {
+    if (mine(x) && Date.now() - x.deletedAt > TRASH_MS && !purged.has(kind + x.id)) {
+      purged.add(kind + x.id);
+      state.store.remove(room(), kind, x.id);
+    }
+  }
+}
+// 1段階目: 確認。2段階目: ゴミ箱へ(すぐ「元に戻す」も押せる)
+function softDelete(kind, x, extra = []) {
+  const label = trashLabel(kind, x);
+  if (!confirm(`「${label.slice(0, 30)}」を削除しますか?\n(${TRASH_DAYS}日間は、設定の「ゴミ箱」から元に戻せます)`)) return false;
+  const at = Date.now();
+  state.store.save(room(), kind, x.id, { deletedAt: at });
+  for (const [k, y] of extra) state.store.save(room(), k, y.id, { deletedAt: at });
+  toast("ゴミ箱に移しました", () => restore(kind, x, extra));
+  return true;
+}
+function restore(kind, x, extra) {
+  state.store.save(room(), kind, x.id, { deletedAt: 0 });
+  // アルバム・行った場所を戻すときは、一緒に消した写真も戻す
+  const key = kind === "albums" ? "albumId" : kind === "places" ? "placeId" : null;
+  const more = extra || (key
+    ? (state.trash.photos || []).filter((p) => p[key] === x.id && Math.abs((p.deletedAt || 0) - (x.deletedAt || 0)) < 10000).map((p) => ["photos", p])
+    : []);
+  for (const [k, y] of more) state.store.save(room(), k, y.id, { deletedAt: 0 });
+  toast("元に戻しました");
+}
+function renderTrash() {
+  const items = Object.keys(TRASH_KINDS).flatMap((kind) => (state.trash[kind] || []).filter(mine).map((x) => ({ kind, x })))
+    // アルバムや場所と一緒に消した写真は、アルバム・場所の行にまとめる
+    .filter(({ kind, x }) => !(kind === "photos" && (
+      (x.albumId && (state.trash.albums || []).some((a) => a.id === x.albumId)) ||
+      (x.placeId && (state.trash.places || []).some((a) => a.id === x.placeId)))))
+    .sort((p, q) => q.x.deletedAt - p.x.deletedAt);
+  const list = items.map(({ kind, x }) => {
+    const left = Math.max(0, Math.ceil((x.deletedAt + TRASH_MS - Date.now()) / (24 * 3600 * 1000)));
+    const img = kind === "photos" ? x.data : kind === "posts" ? x.photo : null;
+    return h("div", { class: "trash-item" },
+      img ? h("img", { src: img, alt: "" }) : null,
+      h("div", { class: "body" },
+        h("div", { class: "t" }, `${TRASH_KINDS[kind]} ${trashLabel(kind, x).slice(0, 40)}`),
+        h("div", { class: "s" }, left > 0 ? `あと${left}日で完全に消えます` : "まもなく完全に消えます")),
+      h("div", { class: "btns" },
+        h("button", { type: "button", class: "small", onclick: () => restore(kind, x) }, "元に戻す"),
+        h("button", { type: "button", class: "small ghost", onclick: () => {
+          if (!confirm("完全に削除しますか?(もう戻せません)")) return;
+          state.store.remove(room(), kind, x.id);
+          const key = kind === "albums" ? "albumId" : kind === "places" ? "placeId" : null;
+          if (key) for (const p of (state.trash.photos || []).filter((p) => p[key] === x.id && mine(p))) state.store.remove(room(), "photos", p.id);
+        } }, "今すぐ消す")));
+  });
+  if (!list.length) list.push(h("p", { class: "muted" }, "ゴミ箱は空です"));
+  $("#trashList").replaceChildren(...list);
 }
 
 function newCode() {
@@ -73,6 +156,7 @@ const state = {
   photos: [],
   albums: [],
   questions: [],
+  trash: {}, // ゴミ箱に入っているもの(種類ごと)
   posts: [],
   profiles: { a: {}, b: {} },
   month: (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
@@ -524,8 +608,17 @@ function openMemory(p) {
   renderStars(p[`stars_${me()}`] || 0);
   renderPartnerReview(p);
   renderMemoryPhotos();
+  // 「行った場所」も、追加した本人なら削除できる
+  $("#btnDeleteVisited").hidden = !mine(p);
   if (!$("#memoryDialog").open) $("#memoryDialog").showModal();
 }
+$("#btnDeleteVisited").addEventListener("click", () => {
+  const p = state.places.find((x) => x.id === memoryPlaceId);
+  if (!p) return;
+  // その場所の自分の写真も一緒にゴミ箱へ(戻すと一緒に戻る)
+  const ph = photosOf(p.id).filter(mine).map((x) => ["photos", x]);
+  if (softDelete("places", p, ph)) $("#memoryDialog").close();
+});
 $("#memoryDialog").addEventListener("close", () => { memoryPlaceId = null; });
 
 $("#memoryForm").addEventListener("submit", (ev) => {
@@ -596,10 +689,8 @@ function openPhoto(x) {
   $("#photoDialog").showModal();
 }
 $("#btnDeletePhoto").addEventListener("click", () => {
-  if (!viewingPhoto || !confirm("この写真を削除しますか?(二人とも見られなくなります)")) return;
-  state.store.remove(room(), "photos", viewingPhoto.id);
-  $("#photoDialog").close();
-  toast("写真を削除しました");
+  if (!viewingPhoto) return;
+  if (softDelete("photos", viewingPhoto)) $("#photoDialog").close();
 });
 
 /* ---------- 相手のものは見るだけ ---------- */
@@ -667,11 +758,9 @@ $("#eventForm").addEventListener("submit", (ev) => {
 });
 
 $("#btnDeleteEvent").addEventListener("click", () => {
-  const id = $("#eventForm").id.value;
-  if (!id || !confirm("この予定を削除しますか?")) return;
-  state.store.remove(room(), "events", id);
-  $("#eventDialog").close();
-  toast("予定を削除しました");
+  const e = state.events.find((x) => x.id === $("#eventForm").id.value);
+  if (!e) return;
+  if (softDelete("events", e)) $("#eventDialog").close();
 });
 
 /* ---------- 行きたい所の入力 ---------- */
@@ -705,11 +794,9 @@ $("#placeForm").addEventListener("submit", (ev) => {
 });
 
 $("#btnDeletePlace").addEventListener("click", () => {
-  const id = $("#placeForm").id.value;
-  if (!id || !confirm("この行きたい所を削除しますか?(予定と写真は残ります)")) return;
-  state.store.remove(room(), "places", id);
-  $("#placeDialog").close();
-  toast("削除しました");
+  const p = state.places.find((x) => x.id === $("#placeForm").id.value);
+  if (!p) return;
+  if (softDelete("places", p)) $("#placeDialog").close();
 });
 
 $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
@@ -728,6 +815,7 @@ function renderSettings() {
   $("#recoveryCode").textContent = state.device.recovery || "(まだありません)";
   renderThemeSettings();
   renderAnnivList();
+  renderTrash();
 }
 
 function renderAnnivList() {
@@ -739,10 +827,7 @@ function renderAnnivList() {
       a.auto
         ? (a.who === me() ? h("button", { class: "small ghost", onclick: () => { show("couple"); openProfile(a.who); } }, "変更") : null)
         : mine(a)
-          ? h("button", { class: "small ghost", onclick: () => {
-            if (!confirm(`「${a.title}」を削除しますか?`)) return;
-            state.store.remove(room(), "anniv", a.id);
-          } }, "削除")
+          ? h("button", { class: "small ghost", onclick: () => softDelete("anniv", a) }, "削除")
           : null));
   if (!items.length) items.push(h("li", { class: "empty" }, "まだありません。付き合った日などを入れてみよう"));
   $("#annivList").replaceChildren(...items);
@@ -1192,10 +1277,7 @@ function renderQuestions() {
   const items = rest.slice(0, 30).map((q) => h("div", { class: "q" },
     h("div", { class: "q-head" }, `${nameOf(q.addedBy)} → ${nameOf(q.to)}`, h("span", { class: "grow" }),
       q.answer ? timeAgo(q.answeredAt || q.createdAt) : h("span", {}, "返事待ち…"),
-      mine(q) ? h("button", { type: "button", class: "small ghost", onclick: () => {
-        if (!confirm("この質問を削除しますか?")) return;
-        state.store.remove(room(), "questions", q.id);
-      } }, "削除") : null),
+      mine(q) ? h("button", { type: "button", class: "small ghost", onclick: () => softDelete("questions", q) }, "削除") : null),
     h("div", { class: "q-text" }, `Q. ${q.text}`),
     q.answer ? h("div", { class: "q-ans" }, h("b", {}, `${nameOf(q.to)}の答え`), q.answer) : null));
   if (!inbox.length && !items.length) items.push(h("p", { class: "muted empty" }, "相手に聞いてみたいことを質問してみよう"));
@@ -1303,11 +1385,8 @@ $("#btnAlbumMenu").addEventListener("click", async () => {
   }
   const ph = albumPhotos(a.id);
   if (ph.some((x) => !mine(x))) { toast(`${nameOf(partner())}の写真が入っているので削除できません`); return; }
-  if (!confirm(`アルバム「${a.title}」と中の写真${ph.length}枚を削除しますか?(元に戻せません)`)) return;
-  for (const x of ph) state.store.remove(room(), "photos", x.id);
-  state.store.remove(room(), "albums", a.id);
-  $("#albumDialog").close();
-  toast("アルバムを削除しました");
+  // アルバムと中の写真をまとめてゴミ箱へ(戻すときも一緒に戻る)
+  if (softDelete("albums", a, ph.map((x) => ["photos", x]))) $("#albumDialog").close();
 });
 
 function renderNow() {
@@ -1321,10 +1400,7 @@ function renderNow() {
     h("div", { class: "post-body" },
       h("div", { class: "post-head" }, h("b", {}, nameOf(p.addedBy)), h("span", { class: "muted" }, timeAgo(p.createdAt)), newBadge(p, "now"),
         h("span", { class: "grow" }),
-        mine(p) ? h("button", { class: "small ghost", onclick: () => {
-          if (!confirm("この投稿を削除しますか?")) return;
-          state.store.remove(room(), "posts", p.id);
-        } }, "削除") : null),
+        mine(p) ? h("button", { class: "small ghost", onclick: () => softDelete("posts", p) }, "削除") : null),
       p.text ? h("div", { class: "post-text" }, p.text) : null,
       p.photo ? h("img", { class: "post-photo", src: p.photo, alt: "", loading: "lazy", onclick: () => openStory(p.addedBy, p.id) }) : null)));
   if (!items.length) items.push(h("li", { class: "empty" }, "「いま何してる?」を写真や文字で送ってみよう"));
@@ -1415,16 +1491,16 @@ function start() {
   state.unsub = [
     state.store.watchRoom(r, (x) => { state.names = { a: "", b: "", ...(x.names || {}) }; rerender(); }),
     state.store.watch(r, "places", (list) => {
-      state.places = list;
+      state.places = splitTrash("places", list);
       renderPlaces(); renderCalendar(); renderAlbum();
       const p = memoryPlaceId && list.find((x) => x.id === memoryPlaceId);
       if (p) renderPartnerReview(p);
     }),
-    state.store.watch(r, "events", (list) => { state.events = list; renderCalendar(); renderPlaces(); }),
-    state.store.watch(r, "anniv", (list) => { state.anniv = list; renderCalendar(); if (!$("#settings").hidden) renderAnnivList(); }),
-    state.store.watch(r, "photos", (list) => { state.photos = list; renderAlbum(); renderAlbums(); renderMemoryPhotos(); }),
-    state.store.watch(r, "albums", (list) => { state.albums = list; renderAlbums(); }),
-    state.store.watch(r, "questions", (list) => { state.questions = list; renderQuestions(); renderSplash(); }),
+    state.store.watch(r, "events", (list) => { state.events = splitTrash("events", list); renderCalendar(); renderPlaces(); }),
+    state.store.watch(r, "anniv", (list) => { state.anniv = splitTrash("anniv", list); renderCalendar(); if (!$("#settings").hidden) renderAnnivList(); }),
+    state.store.watch(r, "photos", (list) => { state.photos = splitTrash("photos", list); renderAlbum(); renderAlbums(); renderMemoryPhotos(); }),
+    state.store.watch(r, "albums", (list) => { state.albums = splitTrash("albums", list); renderAlbums(); }),
+    state.store.watch(r, "questions", (list) => { state.questions = splitTrash("questions", list); renderQuestions(); renderSplash(); }),
     state.store.watch(r, "profiles", (list) => {
       state.profiles = { a: {}, b: {} };
       for (const x of list) if (x.id === "a" || x.id === "b") state.profiles[x.id] = x;
@@ -1432,7 +1508,7 @@ function start() {
       renderCouple(); renderCalendar(); renderNow(); renderSplash();
       if (!$("#settings").hidden) renderAnnivList();
     }),
-    state.store.watch(r, "posts", (list) => { state.posts = list; renderNow(); renderSplash(); }, { limit: 60 }),
+    state.store.watch(r, "posts", (list) => { state.posts = splitTrash("posts", list); renderNow(); renderSplash(); }, { limit: 60 }),
   ];
 }
 
