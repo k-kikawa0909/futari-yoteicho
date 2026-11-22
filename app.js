@@ -157,6 +157,7 @@ const state = {
   albums: [],
   questions: [],
   trash: {}, // ゴミ箱に入っているもの(種類ごと)
+  apologies: [], // ごめんね
   posts: [],
   profiles: { a: {}, b: {} },
   month: (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
@@ -1466,9 +1467,123 @@ function openSplash() {
   renderSplash();
 }
 $("#splash").addEventListener("click", () => {
+  if (!splashOpen) return;
   splashOpen = false;
-  $("#splash").classList.add("leaving");
-  setTimeout(() => { $("#splash").hidden = true; $("#splash").classList.remove("leaving"); }, 350);
+  // ハートが画面いっぱいに広がって、そのまま今の画面へ
+  heartBurst(() => {
+    $("#splash").hidden = true;
+    showPendingOverlay();
+  });
+});
+
+/* ---------- ハートが画面いっぱいに広がる演出 ---------- */
+const HEARTS = ["♥", "💗", "💕", "💖", "♥", "💞"];
+const HEART_COLORS = ["#f06a8a", "#ff8fab", "#ff5c8a", "#ffb3c6", "#e63e6d"];
+function heartBurst(atPeak) {
+  const box = h("div", { class: "burst" }, h("div", { class: "big" }, "♥"));
+  const w = innerWidth, ht = innerHeight;
+  const n = Math.min(170, Math.round((w * ht) / 2200));
+  for (let i = 0; i < n; i++) {
+    const size = 22 + Math.random() * 56;
+    const el = h("span", { class: "h" }, HEARTS[i % HEARTS.length]);
+    el.style.cssText = [
+      `left:${Math.random() * w}px`, `top:${ht * 0.35 + Math.random() * ht * 0.75}px`,
+      `font-size:${size}px`, `color:${HEART_COLORS[i % HEART_COLORS.length]}`,
+      `--dx:${(Math.random() - 0.5) * 120}px`, `--dy:${-(ht * 0.3 + Math.random() * ht * 0.6)}px`,
+      `--rot:${(Math.random() - 0.5) * 60}deg`, `--d:${0.9 + Math.random() * 0.6}s`, `--delay:${Math.random() * 0.35}s`,
+    ].join(";");
+    box.append(el);
+  }
+  document.body.append(box);
+  try { navigator.vibrate && navigator.vibrate(30); } catch {}
+  // 画面がハートで埋まったころに下を切り替え、ハートを消していく
+  setTimeout(() => { if (atPeak) atPeak(); box.classList.add("fade"); }, 1000);
+  setTimeout(() => box.remove(), 1600);
+}
+
+/* ---------- ごめんね(ケンカしたとき) ---------- */
+const SORRY_IDEAS = ["さっきはごめんね", "言いすぎた、ごめん", "ちゃんと話したいな", "大好きだよ、仲直りしよ", "落ち着いたら電話していい?"];
+const SORRY_SEEN_KEY = "couple:sorrySeen";
+function sorrySeen() { try { return JSON.parse(localStorage.getItem(SORRY_SEEN_KEY) || "{}"); } catch { return {}; } }
+function markSorrySeen(id) { const s = sorrySeen(); s[id] = Date.now(); try { localStorage.setItem(SORRY_SEEN_KEY, JSON.stringify(s)); } catch {} }
+const laterThisTime = new Set(); // 「あとで」を押したもの(次に開いたらまた出す)
+const sorryToMe = () => (state.device ? state.apologies.filter((x) => x.to === me() && !x.reply && !laterThisTime.has(x.id)) : []);
+// 自分が送ったごめんねに、まだ見ていない返事が来ているか
+const sorryReplies = () => (state.device ? state.apologies.filter((x) => x.addedBy === me() && x.reply && !sorrySeen()[x.id + ":" + x.reply]) : []);
+
+function renderSorry() {
+  if (!state.device) return;
+  const mineLatest = state.apologies.filter((x) => x.addedBy === me()).sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0))[0];
+  const st = $("#sorryStatus");
+  if (mineLatest && !mineLatest.reply) st.textContent = `ごめんねを送りました(${timeAgo(mineLatest.createdAt)})。返事を待っています…`;
+  else if (mineLatest && mineLatest.reply === "ok" && Date.now() - (mineLatest.repliedAt || 0) < 86400000) st.textContent = "💞 仲直りしました";
+  else if (mineLatest && mineLatest.reply === "wait" && Date.now() - (mineLatest.repliedAt || 0) < 86400000) st.textContent = `${nameOf(partner())}はもう少し時間がほしいみたい。そっと待とう`;
+  else st.textContent = "言いにくいときは、ボタンでごめんねを送ろう";
+  showPendingOverlay();
+}
+
+function openOverlay(children) {
+  $("#overlayBox").replaceChildren(...children.filter(Boolean));
+  $("#overlay").hidden = false;
+}
+function closeOverlay() { $("#overlay").hidden = true; }
+
+// 届いているごめんね・返事を、全画面で知らせる(起動画面の後に)
+function showPendingOverlay() {
+  if (!state.device || splashOpen || !$("#overlay").hidden) return;
+  const got = sorryToMe().sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0))[0];
+  if (got) {
+    const answer = (reply) => {
+      state.store.save(room(), "apologies", got.id, { reply, repliedAt: Date.now() });
+      closeOverlay();
+      if (reply === "ok") heartBurst(() => toast("仲直り 💞"));
+      else toast("「もう少し待って」と伝えました");
+    };
+    openOverlay([
+      h("div", { class: "overlay-emoji" }, "🙏"),
+      h("div", { class: "overlay-title" }, `${nameOf(got.addedBy)}からごめんねが届いています`),
+      got.text ? h("div", { class: "overlay-msg" }, got.text) : null,
+      h("div", { class: "muted" }, timeAgo(got.createdAt)),
+      h("div", { class: "overlay-btns" },
+        h("button", { type: "button", class: "love", onclick: () => answer("ok") }, "いいよ 💗 仲直りしよ"),
+        h("button", { type: "button", onclick: () => answer("wait") }, "もう少し時間がほしい"),
+        h("button", { type: "button", class: "ghost", onclick: () => { laterThisTime.add(got.id); closeOverlay(); } }, "あとで")),
+    ]);
+    return;
+  }
+  const rep = sorryReplies()[0];
+  if (rep) {
+    markSorrySeen(rep.id + ":" + rep.reply);
+    if (rep.reply === "ok") {
+      heartBurst();
+      setTimeout(() => openOverlay([
+        h("div", { class: "overlay-emoji" }, "💞"),
+        h("div", { class: "overlay-title" }, "仲直り成立!"),
+        h("div", { class: "muted" }, `${nameOf(partner())}が「いいよ」って言ってくれました`),
+        h("div", { class: "overlay-btns" }, h("button", { type: "button", class: "love", onclick: closeOverlay }, "よかった"))]), 900);
+    } else {
+      openOverlay([
+        h("div", { class: "overlay-emoji" }, "⏳"),
+        h("div", { class: "overlay-title" }, `${nameOf(partner())}はもう少し時間がほしいみたい`),
+        h("div", { class: "muted" }, "ごめんねはちゃんと届いています。落ち着くまでそっと待とう"),
+        h("div", { class: "overlay-btns" }, h("button", { type: "button", onclick: closeOverlay }, "わかった"))]);
+    }
+  }
+}
+
+$("#btnSorry").addEventListener("click", () => {
+  const f = $("#sorryForm");
+  f.reset();
+  $("#sorryTitle").textContent = `🙏 ${nameOf(partner())}にごめんねを送る`;
+  $("#sorryIdeas").replaceChildren(...SORRY_IDEAS.map((t) => h("button", { type: "button", class: "chip", onclick: () => { f.text.value = t; } }, t)));
+  $("#sorryDialog").showModal();
+});
+$("#sorryForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const text = ev.target.text.value.trim() || "ごめんね";
+  state.store.save(room(), "apologies", null, { text, addedBy: me(), to: partner(), reply: "" });
+  $("#sorryDialog").close();
+  toast(`${nameOf(partner())}にごめんねを送りました`);
 });
 
 /* ---------- 起動 ---------- */
@@ -1501,6 +1616,7 @@ function start() {
     state.store.watch(r, "photos", (list) => { state.photos = splitTrash("photos", list); renderAlbum(); renderAlbums(); renderMemoryPhotos(); }),
     state.store.watch(r, "albums", (list) => { state.albums = splitTrash("albums", list); renderAlbums(); }),
     state.store.watch(r, "questions", (list) => { state.questions = splitTrash("questions", list); renderQuestions(); renderSplash(); }),
+    state.store.watch(r, "apologies", (list) => { state.apologies = list; renderSorry(); }, { limit: 20 }),
     state.store.watch(r, "profiles", (list) => {
       state.profiles = { a: {}, b: {} };
       for (const x of list) if (x.id === "a" || x.id === "b") state.profiles[x.id] = x;
@@ -1552,7 +1668,7 @@ function clearPeek() {
 document.addEventListener("touchstart", (ev) => {
   drag = null;
   if (ev.touches.length !== 1 || !state.device || !TAB_ORDER.includes(currentView)) return;
-  if (document.querySelector("dialog[open]") || !$("#splash").hidden || !$("#story").hidden) return;
+  if (document.querySelector("dialog[open]") || !$("#splash").hidden || !$("#story").hidden || !$("#overlay").hidden) return;
   const target = ev.target;
   // 横にスクロールする部分や入力欄では反応させない
   if (target.closest(".countdowns, .chips, input, textarea, select, .tabs")) return;

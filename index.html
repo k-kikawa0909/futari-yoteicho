@@ -101,6 +101,13 @@
   <!-- いま(今なにしてる? + 質問箱) -->
   <section id="now" class="view" hidden>
     <div class="now-cards" id="nowCards"></div>
+    <div class="card sorry-card">
+      <div class="body">
+        <b>🙏 ケンカしちゃったら</b>
+        <div class="s" id="sorryStatus">言いにくいときは、ボタンでごめんねを送ろう</div>
+      </div>
+      <button id="btnSorry" class="sorry-btn">ごめんねを送る</button>
+    </div>
     <form id="postForm" class="card post-form">
       <textarea id="postText" rows="2" maxlength="200" placeholder="いま何してる?"></textarea>
       <div class="chips" id="quickChips"></div>
@@ -369,6 +376,21 @@
   </form>
 </dialog>
 
+<!-- ごめんねを送る -->
+<dialog id="sorryDialog">
+  <form method="dialog" id="sorryForm">
+    <h2 id="sorryTitle">🙏 ごめんねを送る</h2>
+    <p class="muted">一言そえるなら(そのままでも送れます)</p>
+    <div class="chips wrap" id="sorryIdeas"></div>
+    <textarea name="text" rows="3" maxlength="200" placeholder="さっきはごめんね"></textarea>
+    <div class="actions">
+      <span class="grow"></span>
+      <button type="button" class="ghost" data-close>やめる</button>
+      <button type="submit" class="primary">送る</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- 写真を大きく -->
 <dialog id="photoDialog" class="photo-view">
   <img id="photoBig" alt="">
@@ -407,6 +429,11 @@
   <div class="story-text" id="storyText"></div>
   <div class="story-tap prev" id="storyPrev"></div>
   <div class="story-tap next" id="storyNext"></div>
+</div>
+
+<!-- 全画面のお知らせ(ごめんねが届いた・仲直りした など) -->
+<div id="overlay" class="overlay" hidden>
+  <div class="overlay-box" id="overlayBox"></div>
 </div>
 
 <!-- 起動画面: ふたりのアイコンとハート。タップで閉じる -->

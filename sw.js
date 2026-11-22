@@ -1,5 +1,5 @@
 // アプリの画面をスマホに保存して、すばやく開けるようにする
-const CACHE = "futari-v8";
+const CACHE = "futari-v9";
 const SHELL = ["./", "index.html", "style.css", "app.js", "store.js", "compat.js", "config.js", "manifest.json",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 

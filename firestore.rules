@@ -72,7 +72,17 @@ service cloud.firestore {
 
       // ---- 予定・記念日・写真・いま: 作った人だけが変更・削除できる ----
       match /{kind}/{id} {
-        allow read: if isMember(r) && kind in ['events', 'anniv', 'photos', 'posts', 'places', 'profiles', 'albums', 'questions'];
+        allow read: if isMember(r) && kind in ['events', 'anniv', 'photos', 'posts', 'places', 'profiles', 'albums', 'questions', 'apologies'];
+      }
+      // ---- ごめんね: 相手あてに送る。返事(いいよ/待って)は受け取った人だけ ----
+      match /apologies/{id} {
+        allow create: if isMember(r) && ownsNew(r)
+          && request.resource.data.get('to', '') in ['a', 'b']
+          && request.resource.data.get('to', '') != myRole(r);
+        allow update: if isMember(r) && resource.data.get('to', '') == myRole(r)
+          && changed().hasOnly(['reply', 'repliedAt', 'updatedAt'])
+          && request.resource.data.get('reply', '') in ['ok', 'wait'];
+        allow delete: if isMember(r) && ownsOld(r);
       }
       // ---- 共有アルバム: アルバムの名前・削除は作った人だけ(写真は photos で二人とも追加できる) ----
       match /albums/{id} {
