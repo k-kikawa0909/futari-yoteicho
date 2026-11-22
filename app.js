@@ -1666,7 +1666,8 @@ function showWelcome() {
   b.style.top = "22%";
   b.replaceChildren(h("div", { class: "coach-welcome" },
     h("div", { class: "overlay-emoji" }, "💞"),
-    h("div", { class: "coach-title" }, `ようこそ、${nameOf(me())}さん!`),
+    // 名前は最初の画面で本人が入れたもの。まだ読み込めていなければ名前なしで呼ぶ
+    h("div", { class: "coach-title" }, state.names[me()] ? `ようこそ、${state.names[me()]}さん!` : "ようこそ!"),
     h("div", { class: "coach-text" }, "ふたりの予定帳へようこそ。\nまずは、あなたのプロフィールを書いてね。\nアイコン写真・自分の色・誕生日などを入れると、相手にも見えるようになります。"),
     h("div", { class: "actions" },
       h("span", { class: "grow" }),
