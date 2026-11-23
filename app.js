@@ -1176,21 +1176,116 @@ function renderSwatches(current) {
     h("label", { class: `swatch custom ${custom ? "on" : ""}`, style: custom ? `background:${current}` : "", title: "好きな色" }, custom ? "" : "＋", picker));
 }
 
-// アイコン写真: 真ん中を正方形に切り取って小さくする
-async function squareIcon(file, size = 240) {
-  const img = await loadImage(file);
-  const s = Math.min(img.naturalWidth, img.naturalHeight);
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  c.getContext("2d").drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, size, size);
-  return c.toDataURL("image/jpeg", 0.82);
+/* ---------- 写真のトリミング(指でずらす・2本指かバーで拡大) ----------
+   cropImage(file, { shape: "circle" | "square", out: 出力の大きさ, allowOriginal: 「そのまま使う」を出すか })
+   → 切り取った画像(dataURL) / "original"(そのまま使う)/ null(やめる) */
+const crop = { img: null, s0: 1, z: 1, x: 0, y: 0, V: 300, pointers: new Map(), pinch: null, resolve: null, opts: null };
+function cropApply() {
+  if (!crop.img || !crop.img.naturalWidth) return;
+  const { img, s0, z, V } = crop;
+  const s = s0 * z;
+  const w = img.naturalWidth * s, ht = img.naturalHeight * s;
+  // 枠の中が必ず写真で埋まるように、ずらせる範囲を制限する
+  crop.x = Math.min(0, Math.max(V - w, crop.x));
+  crop.y = Math.min(0, Math.max(V - ht, crop.y));
+  $("#cropImg").style.transform = `translate(${crop.x}px, ${crop.y}px) scale(${s})`;
 }
+// 指の位置 (px, py) を中心にして拡大する
+function cropZoomTo(z, px = crop.V / 2, py = crop.V / 2) {
+  const old = crop.s0 * crop.z;
+  crop.z = Math.min(4, Math.max(1, z));
+  const s = crop.s0 * crop.z;
+  crop.x = px - (px - crop.x) * (s / old);
+  crop.y = py - (py - crop.y) * (s / old);
+  $("#cropZoom").value = String(crop.z);
+  cropApply();
+}
+let cropUrl = null;
+async function cropImage(file, opts = {}) {
+  // トリミング画面用に、画像を読み込み直す(使い終わったら片付ける)
+  if (cropUrl) URL.revokeObjectURL(cropUrl);
+  cropUrl = URL.createObjectURL(file);
+  const el = $("#cropImg");
+  await new Promise((resolve, reject) => {
+    el.onload = resolve;
+    el.onerror = () => reject(new Error("画像を読み込めませんでした"));
+    el.src = cropUrl;
+  });
+  $("#cropMask").className = `crop-mask ${opts.shape || "circle"}`;
+  $("#cropTitle").textContent = opts.title || "写真をトリミング";
+  $("#cropOriginal").hidden = !opts.allowOriginal;
+  $("#cropZoom").value = "1";
+  // 画面を開いてから枠の大きさを測る(閉じている間は大きさが 0 になるため)
+  $("#cropDialog").showModal();
+  const V = $("#cropArea").clientWidth || 300;
+  Object.assign(crop, { img: el, V, z: 1, opts, pointers: new Map(), pinch: null });
+  crop.s0 = Math.max(V / el.naturalWidth, V / el.naturalHeight); // 枠をちょうど覆う大きさ
+  crop.x = (V - el.naturalWidth * crop.s0) / 2;
+  crop.y = (V - el.naturalHeight * crop.s0) / 2;
+  cropApply();
+  return new Promise((resolve) => { crop.resolve = resolve; });
+}
+function cropFinish(result) {
+  const r = crop.resolve;
+  crop.resolve = null;
+  $("#cropDialog").close();
+  if (r) r(result);
+}
+$("#cropOk").addEventListener("click", () => {
+  if (!crop.resolve) return;
+  const { img, s0, z, x, y, V, opts } = crop;
+  const s = s0 * z;
+  const out = opts.out || 320;
+  const c = document.createElement("canvas");
+  c.width = c.height = out;
+  c.getContext("2d").drawImage(img, -x / s, -y / s, V / s, V / s, 0, 0, out, out);
+  cropFinish(c.toDataURL("image/jpeg", 0.85));
+});
+$("#cropCancel").addEventListener("click", () => cropFinish(null));
+$("#cropOriginal").addEventListener("click", () => cropFinish("original"));
+$("#cropDialog").addEventListener("cancel", (ev) => { ev.preventDefault(); cropFinish(null); });
+$("#cropZoom").addEventListener("input", (ev) => cropZoomTo(Number(ev.target.value)));
+
+// 1本指でずらす・2本指で拡大(マウスでも動く)
+const cropArea = $("#cropArea");
+const localXY = (ev) => { const r = cropArea.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+cropArea.addEventListener("pointerdown", (ev) => {
+  crop.pointers.set(ev.pointerId, localXY(ev));
+  try { cropArea.setPointerCapture(ev.pointerId); } catch {} // 枠の外まで指が出ても追いかける
+  if (crop.pointers.size === 2) {
+    const [a, b] = [...crop.pointers.values()];
+    crop.pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: crop.z };
+  }
+});
+cropArea.addEventListener("pointermove", (ev) => {
+  if (!crop.pointers.has(ev.pointerId)) return;
+  const prev = crop.pointers.get(ev.pointerId);
+  const cur = localXY(ev);
+  crop.pointers.set(ev.pointerId, cur);
+  if (crop.pointers.size >= 2 && crop.pinch) {
+    const [a, b] = [...crop.pointers.values()];
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    cropZoomTo(crop.pinch.z * (d / crop.pinch.d), (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+  } else {
+    crop.x += cur[0] - prev[0];
+    crop.y += cur[1] - prev[1];
+    cropApply();
+  }
+});
+const cropUp = (ev) => { crop.pointers.delete(ev.pointerId); if (crop.pointers.size < 2) crop.pinch = null; };
+cropArea.addEventListener("pointerup", cropUp);
+cropArea.addEventListener("pointercancel", cropUp);
+cropArea.addEventListener("wheel", (ev) => { ev.preventDefault(); const [px, py] = localXY(ev); cropZoomTo(crop.z * (ev.deltaY < 0 ? 1.1 : 0.9), px, py); }, { passive: false });
+
+// アイコン写真: 1枚だけ使い、丸く切り取る
 $("#avatarInput").addEventListener("change", async (ev) => {
-  const file = ev.target.files[0];
+  const file = ev.target.files[0]; // 何枚選ばれても1枚目だけ
   ev.target.value = "";
   if (!file) return;
   try {
-    pendingAvatar = await squareIcon(file);
+    const data = await cropImage(file, { shape: "circle", out: 320, title: "アイコンの範囲を決めてね" });
+    if (!data) return;
+    pendingAvatar = data;
     showAvatarPreview(pendingAvatar);
   } catch (e) {
     console.error(e);
@@ -1463,11 +1558,14 @@ function openPostPhoto(p) {
 
 let postPhoto = null;
 $("#postPhotoInput").addEventListener("change", async (ev) => {
-  const file = ev.target.files[0];
+  const file = ev.target.files[0]; // 何枚選ばれても1枚目だけ
   ev.target.value = "";
   if (!file) return;
   try {
-    postPhoto = await compress(file);
+    // 四角に切り取るか、そのまま使うかを選べる
+    const data = await cropImage(file, { shape: "square", out: 1080, allowOriginal: true, title: "写真を切り取る" });
+    if (!data) return;
+    postPhoto = data === "original" ? await compress(file) : data;
     $("#postPreview").replaceChildren(h("img", { src: postPhoto, alt: "" }),
       h("button", { type: "button", class: "small ghost", onclick: () => { postPhoto = null; $("#postPreview").replaceChildren(); } }, "写真をやめる"));
   } catch (e) {
@@ -1830,6 +1928,10 @@ function slideIn(el, step) {
   el.style.opacity = "";
   after(300, () => { el.style.cssText = ""; });
 }
+
+// iPhone で2本指で画面ごと拡大されないようにする(トリミング画面の2本指拡大は別に動く)
+document.addEventListener("gesturestart", (ev) => ev.preventDefault());
+document.addEventListener("gesturechange", (ev) => ev.preventDefault());
 
 let drag = null;
 function clearPeek() {

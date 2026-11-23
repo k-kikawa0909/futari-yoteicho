@@ -44,6 +44,10 @@
 }
 
 * { box-sizing: border-box; }
+/* ダブルタップでの拡大を止める(タップはそのまま効く) */
+html, body, button, a, label, input, select, textarea { touch-action: manipulation; }
+/* iPhone は 16px より小さい入力欄を押すと勝手に拡大するので、入力欄はすべて 16px にする */
+input, select, textarea { font-size: 16px !important; }
 [hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }
 body {
@@ -523,6 +527,19 @@ body { overflow-x: hidden; }
 .coach .actions { margin-top: 10px; }
 .coach-welcome { text-align: center; }
 .coach-welcome .overlay-emoji { margin-bottom: 4px; }
+
+/* 写真のトリミング */
+.crop-dialog { padding: 16px; }
+.crop-area {
+  position: relative; width: min(320px, calc(100vw - 64px)); aspect-ratio: 1; margin: 8px auto 4px;
+  overflow: hidden; border-radius: 14px; background: #111; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.crop-area img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; pointer-events: none; }
+.crop-mask { position: absolute; inset: 0; pointer-events: none; }
+.crop-mask.circle { border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); outline: 2px solid rgba(255,255,255,.9); outline-offset: -2px; }
+.crop-mask.square { box-shadow: inset 0 0 0 2px rgba(255,255,255,.9); }
+.crop-zoom { display: flex; align-items: center; gap: 10px; margin: 8px auto 0; max-width: 320px; font-size: 18px; color: var(--text); }
+.crop-zoom input { flex: 1; margin: 0; padding: 0; border: 0; background: none; accent-color: var(--accent); }
 
 /* 元に戻すボタン付きのお知らせ */
 .toast { display: flex; align-items: center; gap: 12px; }
