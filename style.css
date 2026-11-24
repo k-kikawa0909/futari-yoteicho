@@ -542,12 +542,15 @@ body { overflow-x: hidden; }
 .crop-zoom input { flex: 1; margin: 0; padding: 0; border: 0; background: none; accent-color: var(--accent); }
 
 /* 一番上のバーの「付き合って○日目」(どのタブでも見える) */
+/* 一番上のバーの下の1行: 付き合って○日目 ・ ○日記念まであと○日 */
+.top { flex-wrap: wrap; }
 .together {
-  display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap;
-  background: color-mix(in srgb, var(--love) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--love) 35%, var(--line));
-  border-radius: 99px; padding: 3px 10px; font-size: 12px; color: var(--text);
+  flex-basis: 100%; display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 4px 14px;
+  margin-top: 6px; padding: 5px 10px; border-radius: 12px; font-size: 12px; color: var(--text);
+  background: color-mix(in srgb, var(--love) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--love) 30%, var(--line));
 }
-.together b { font-size: 17px; color: var(--love); }
+.together span { white-space: nowrap; }
+.together b { font-size: 17px; color: var(--love); margin: 0 2px; }
 .top h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* 元に戻すボタン付きのお知らせ */

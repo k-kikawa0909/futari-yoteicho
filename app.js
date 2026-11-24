@@ -291,15 +291,21 @@ function renderCountdowns() {
   const top = $("#togetherDays");
   if (main) {
     const n = daysBetween(main.date, today) + 1;
-    top.replaceChildren(h("span", {}, "💑"), h("b", {}, n.toLocaleString()), "日目");
+    // 次の「○日記念」(100日・200日…・1年=365日 など)まで、あと何日かも並べて出す
+    const next = MILESTONES.find((m) => m > n) || Math.ceil((n + 1) / 1000) * 1000;
+    top.replaceChildren(
+      h("span", {}, "💑 付き合って", h("b", {}, n.toLocaleString()), "日目"),
+      MILESTONES.includes(n)
+        ? h("span", {}, "🎉 今日は", h("b", {}, n), "日記念!")
+        : h("span", {}, `🎉 ${next}日記念まで あと`, h("b", {}, next - n), "日"));
     top.title = `${main.title}から${n}日目`;
     top.hidden = false;
   } else top.hidden = true;
 
-  // ほかの「あと○日」は、近い順に左から並べる
+  // ほかの「あと○日」は、近い順に左から並べる(いちばん古い記念日の分は上に出しているので除く)
   const items = []; // { left, card }
   const cdNum = (left) => (left === 0 ? h("div", { class: "cd-n" }, h("b", {}, "今日!"), "🎉") : h("div", { class: "cd-n" }, "あと", h("b", {}, left), "日"));
-  for (const a of since) {
+  for (const a of since.slice(1)) {
     const n = daysBetween(a.date, today) + 1;
     if (MILESTONES.includes(n)) {
       items.push({ left: 0, card: h("div", { class: "cd since" },
