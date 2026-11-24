@@ -285,40 +285,46 @@ function nextYearly(dateStr) {
 }
 const MILESTONES = [100, 200, 300, 365, 500, 700, 730, 1000, 1095, 1500, 2000, 3000];
 function renderCountdowns() {
-  const cards = [];
-  for (const a of allAnniv().filter((x) => x.kind === "since" && x.date <= today)) {
+  // 「付き合って○日目」は一番上のバーにずっと出す(いちばん古い「この日から」の記念日)
+  const since = allAnniv().filter((x) => x.kind === "since" && x.date <= today).sort((x, y) => x.date.localeCompare(y.date));
+  const main = since[0];
+  const top = $("#togetherDays");
+  if (main) {
+    const n = daysBetween(main.date, today) + 1;
+    top.replaceChildren(h("span", {}, "💑"), h("b", {}, n.toLocaleString()), "日目");
+    top.title = `${main.title}から${n}日目`;
+    top.hidden = false;
+  } else top.hidden = true;
+
+  // ほかの「あと○日」は、近い順に左から並べる
+  const items = []; // { left, card }
+  const cdNum = (left) => (left === 0 ? h("div", { class: "cd-n" }, h("b", {}, "今日!"), "🎉") : h("div", { class: "cd-n" }, "あと", h("b", {}, left), "日"));
+  for (const a of since) {
     const n = daysBetween(a.date, today) + 1;
+    if (MILESTONES.includes(n)) {
+      items.push({ left: 0, card: h("div", { class: "cd since" },
+        h("div", { class: "cd-t" }, `💑 ${a.title}から`), h("div", { class: "cd-n" }, h("b", {}, n), "日記念!"), h("div", { class: "cd-s" }, "🎉 おめでとう")) });
+      continue;
+    }
     const next = MILESTONES.find((m) => m > n) || Math.ceil((n + 1) / 1000) * 1000;
-    const isMilestone = MILESTONES.includes(n);
-    cards.push(h("div", { class: "cd since" },
-      h("div", { class: "cd-t" }, `💑 ${a.title}から`),
-      h("div", { class: "cd-n" }, h("b", {}, n.toLocaleString()), "日目"),
-      h("div", { class: "cd-s" }, isMilestone ? `🎉 今日は${n}日記念!` : `${next}日記念まで あと${next - n}日`)
-    ));
+    items.push({ left: next - n, card: h("div", { class: "cd since" },
+      h("div", { class: "cd-t" }, `💑 ${next}日記念まで`), cdNum(next - n), h("div", { class: "cd-s" }, dayLabel(addDays(today, next - n)))) });
   }
-  const yearly = allAnniv()
-    .filter((x) => x.kind === "yearly")
-    .map((a) => ({ a, left: daysBetween(today, nextYearly(a.date)) }))
-    .sort((x, y) => x.left - y.left);
-  for (const { a, left } of yearly.slice(0, 3)) {
-    cards.push(h("div", { class: "cd yearly" },
-      h("div", { class: "cd-t" }, `🎂 ${a.title}`),
-      left === 0 ? h("div", { class: "cd-n" }, h("b", {}, "今日!"), "🎉")
-        : h("div", { class: "cd-n" }, "あと", h("b", {}, left), "日"),
-      h("div", { class: "cd-s" }, dayLabel(nextYearly(a.date)))
-    ));
+  for (const a of allAnniv().filter((x) => x.kind === "yearly")) {
+    const left = daysBetween(today, nextYearly(a.date));
+    items.push({ left, card: h("div", { class: "cd yearly" },
+      h("div", { class: "cd-t" }, `🎂 ${a.title}`), cdNum(left), h("div", { class: "cd-s" }, dayLabel(nextYearly(a.date)))) });
   }
   const nextDate = state.events
     .filter((e) => (e.who || "both") === "both" && (e.endDate || e.date) >= today)
     .sort((x, y) => x.date.localeCompare(y.date) || byTime(x, y))[0];
   if (nextDate) {
     const left = Math.max(0, daysBetween(today, nextDate.date));
-    cards.push(h("div", { class: "cd date", onclick: () => selectDay(nextDate.date) },
-      h("div", { class: "cd-t" }, "📅 次のデート"),
-      left === 0 ? h("div", { class: "cd-n" }, h("b", {}, "今日!")) : h("div", { class: "cd-n" }, "あと", h("b", {}, left), "日"),
-      h("div", { class: "cd-s" }, nextDate.title)
-    ));
+    items.push({ left, card: h("div", { class: "cd date", onclick: () => selectDay(nextDate.date) },
+      h("div", { class: "cd-t" }, "📅 次のデート"), cdNum(left), h("div", { class: "cd-s" }, nextDate.title)) });
   }
+  items.sort((x, y) => x.left - y.left);
+  const cards = items.slice(0, 6).map((x) => x.card);
   $("#countdowns").replaceChildren(...cards);
   $("#countdowns").hidden = !cards.length;
 }
@@ -391,7 +397,8 @@ function eventItem(e, showDate) {
   const multi = e.endDate && e.endDate > e.date;
   const when = multi ? `${shortDay(e.date)}〜${shortDay(e.endDate)}(${daysBetween(e.date, e.endDate) + 1}日間)`
     : showDate ? dayLabel(e.date) : null;
-  const sub = [when, e.time || (multi ? null : "時間未定"), nameOf(e.who || "both")].filter(Boolean).join(" · ");
+  const edited = e.editedBy && e.editedBy !== e.addedBy ? `${nameOf(e.editedBy)}が編集` : null;
+  const sub = [when, e.time || (multi ? null : "時間未定"), nameOf(e.who || "both"), edited].filter(Boolean).join(" · ");
   const where = e.location || (place ? [place.title, place.area].filter(Boolean).join(" ") : "");
   return h("li", { class: `item ${e.who || "both"}`, onclick: () => openEvent(e) },
     h("div", { class: "body" },
@@ -711,8 +718,11 @@ function setReadonly(form, ro, note) {
 function openEvent(e = {}) {
   const f = $("#eventForm");
   f.reset();
-  const ro = !mine(e);
-  setReadonly(f, ro, `${nameOf(e.addedBy)}が入れた予定です(見るだけ)`);
+  // 予定は二人とも編集できる(削除は入れた本人だけ)
+  const others = e.id && !mine(e);
+  setReadonly(f, false);
+  const note = f.querySelector(".ro-note");
+  if (note) { note.hidden = !others; note.textContent = others ? `${nameOf(e.addedBy)}が入れた予定です。編集はできます(削除は${nameOf(e.addedBy)}だけ)` : ""; }
   f.title.value = e.title || "";
   f.date.value = e.date || state.selected;
   f.endDate.value = e.endDate || "";
@@ -723,8 +733,8 @@ function openEvent(e = {}) {
   f.placeId.value = e.placeId || "";
   f.querySelector(`input[name=who][value="${e.who || "both"}"]`).checked = true;
   $$("#eventForm .wname").forEach((s) => (s.textContent = nameOf(s.dataset.w)));
-  $("#eventDialogTitle").textContent = ro ? "予定" : e.id ? "予定を変更" : "予定を追加";
-  $("#btnDeleteEvent").hidden = !e.id || ro;
+  $("#eventDialogTitle").textContent = e.id ? "予定を変更" : "予定を追加";
+  $("#btnDeleteEvent").hidden = !e.id || others;
   $("#eventMsg").textContent = "";
   $("#eventDialog").showModal();
 }
@@ -752,6 +762,7 @@ $("#eventForm").addEventListener("submit", (ev) => {
     return;
   }
   if (!f.id.value) data.addedBy = me();
+  else data.editedBy = me(); // だれが最後に編集したか
   state.store.save(room(), "events", f.id.value || null, data);
   $("#eventDialog").close();
   toast("予定を保存しました");

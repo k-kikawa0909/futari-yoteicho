@@ -114,9 +114,13 @@ service cloud.firestore {
           || (ownsOld(r) && changed().hasOnly(['deletedAt', 'updatedAt'])));
         allow delete: if isMember(r) && ownsOld(r);
       }
+      // 予定は二人とも編集できる。「だれが入れたか」は変えられず、削除(ゴミ箱)は入れた本人だけ
       match /events/{id} {
         allow create: if isMember(r) && ownsNew(r);
-        allow update: if isMember(r) && ownsOld(r) && ownsNew(r);
+        allow update: if isMember(r)
+          && request.resource.data.get('addedBy', '') == resource.data.get('addedBy', '')
+          && (ownsOld(r) || !changed().hasAny(['deletedAt']))
+          && (!changed().hasAny(['editedBy']) || request.resource.data.get('editedBy', '') == myRole(r));
         allow delete: if isMember(r) && ownsOld(r);
       }
       match /anniv/{id} {
